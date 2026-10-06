@@ -267,3 +267,12 @@
 - 第 7 天：第 12 步，完成测试、演示和研究材料收口。
 
 如果时间不足，优先保证第 1-8 步完成，再实现规则式 Agent；远程大模型接入属于可替换增强项。
+
+## Revised Execution Priority
+
+1. Verify MySQL service and database credentials; define the user/account schema.
+2. Implement Spring Boot user persistence and registration/login/logout APIs.
+3. Build Vue login, registration, logout, and authenticated shell screens.
+4. Verify browser-to-Java-to-MySQL interaction and document DataGrip checks.
+5. Add ownership boundaries for user experiments and simulation history.
+6. Return to the normalized trajectory-source contract and browser playback after the account foundation is accepted.

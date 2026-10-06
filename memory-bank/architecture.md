@@ -148,3 +148,22 @@
 - The demo viewer uses Java simulation results as its only data source. It does not read MySQL directly and does not duplicate simulation-domain logic.
 - This path is a reliable demo/export fallback while the Vue manual run-state bug is still being repaired.
 - Vue should later reuse the same data mapping from SimulationResult or the normalized detail API, but remain the primary interactive UI.
+## Step 16 Completed Structure
+
+- web/src/App.vue: renders the immediate Java simulation snapshot, then refreshes normalized playback detail in the background; request tokens and AbortController ownership prevent stale responses from changing the active run state.
+- web/package.json and web/tsconfig.app.json: use no-emit Vue type checking and the Vite config loader that works in the local Windows environment.
+- backend/target/fusionpilot-backend-0.1.0-SNAPSHOT.jar: must be rebuilt after backend route changes before runtime verification; an older packaged jar can omit the normalized detail route even when source tests pass.
+- The frontend remains dependent on Java APIs for simulation facts and does not access MySQL directly.
+- The normalized detail endpoint is now usable for trajectory playback and metric chart data, while the original simulation snapshot remains the fast initial response and fallback.
+## Step 16.1 Runtime Proxy Boundary
+
+- Vite API proxies use 127.0.0.1 for the Java and FastAPI local services to make the browser-to-local-service boundary deterministic on Windows.
+- Vue simulation requests allow 30 seconds and use a 32-second watchdog; timeout and cancellation still release loading state and progress controls.
+- Runtime verification through a temporary Vite port confirmed the frontend proxy returns the Java default configuration and simulation snapshot successfully.
+## Product Direction Update - October 6, 2026
+
+- Current priority moved from browser trajectory playback to the account and persistence foundation: MySQL user schema, registration, login, logout, session handling, and Vue account screens.
+- Java/Spring Boot remains the owner of authentication, authorization, user persistence, and simulation-domain facts. Vue remains a client and FastAPI remains the Agent boundary.
+- Trajectory playback is deferred, but its future contract must accept both generated simulation trajectories and imported real datasets. A normalized trajectory source boundary should prevent the visualization from depending on one data generator.
+- MySQL and DataGrip are first-class development tools for learning front-end/backend/database interaction and operations.
+- Each completed feature or material change must be recorded in design-document.md, architecture.md, and progress.md, followed by a user-facing Git commit walkthrough.

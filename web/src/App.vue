@@ -189,6 +189,8 @@ const activeController = ref<AbortController | null>(null)
 const activeRunToken = ref(0)
 let chart: echarts.ECharts | null = null
 let progressTimer: number | undefined
+const REQUEST_TIMEOUT_MS = 30_000
+const RUN_WATCHDOG_MS = 32_000
 
 const activeMetrics = computed(() => simulation.value?.metrics ?? null)
 const currentStep = computed(() => simulation.value?.steps[activeStep.value] ?? null)
@@ -247,10 +249,16 @@ function cancelRun() {
   errorMessage.value = '\u5df2\u53d6\u6d88\u672c\u6b21\u64cd\u4f5c\u3002'
 }
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const controller = new AbortController()
-  activeController.value = controller
-  const timeoutId = window.setTimeout(() => controller.abort(), 5000)
+async function request<T>(
+  url: string,
+  options?: RequestInit,
+  controller = new AbortController()
+): Promise<T> {
+  let timedOut = false
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch(url, {
       headers: { 'Content-Type': 'application/json' },
@@ -264,14 +272,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     return payload.data as T
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`Request timed out: ${url}`)
+      if (timedOut) {
+        throw new Error(`Request timed out: ${url}`)
+      }
+      throw error
     }
     throw error
   } finally {
     window.clearTimeout(timeoutId)
-    if (activeController.value === controller) {
-      activeController.value = null
-    }
   }
 }
 
@@ -367,43 +375,56 @@ async function runSimulation() {
   errorMessage.value = ''
   comparison.value = null
   beginProgress('\u5df2\u63d0\u4ea4\u4eff\u771f\u8bf7\u6c42')
+  const controller = new AbortController()
+  activeController.value = controller
   const watchdogId = window.setTimeout(() => {
     if (activeRunToken.value !== token || !loading.value) return
-    activeController.value?.abort()
+    activeRunToken.value += 1
+    controller.abort()
+    if (activeController.value === controller) {
+      activeController.value = null
+    }
     loading.value = false
     clearProgress()
     progressPercent.value = 0
     progressText.value = '\u4eff\u771f\u8bf7\u6c42\u8d85\u65f6'
-    errorMessage.value = '\u524d\u7aef\u7b49\u5f85 Java \u4eff\u771f\u8d85\u8fc7 5 \u79d2\u3002\u540e\u7aef\u547d\u4ee4\u884c\u6d4b\u8bd5\u80fd\u8fd4\u56de\uff0c\u8bf7\u91cd\u542f\u524d\u7aef dev \u670d\u52a1\u6216\u5237\u65b0\u9875\u9762\u540e\u518d\u8bd5\u3002'
-  }, 5500)
+    errorMessage.value = '\u524d\u7aef\u7b49\u5f85 Java \u4eff\u771f\u8d85\u8fc7 30 \u79d2\u3002\u8bf7\u68c0\u67e5 Java \u540e\u7aef\u7ec8\u7aef\u65e5\u5fd7\u3002'
+  }, RUN_WATCHDOG_MS)
+  let result: SimulationResult
   try {
-    const result = await request<SimulationResult>('/api/v1/simulations/run', {
+    result = await request<SimulationResult>('/api/v1/simulations/run', {
       method: 'POST',
       body: JSON.stringify(config.value)
-    })
-    if (activeRunToken.value !== token) return
-    progressPercent.value = 96
-    progressText.value = '\u5df2\u6536\u5230\u4eff\u771f\u7ed3\u679c\uff0c\u6b63\u5728\u66f4\u65b0\u754c\u9762...'
-    simulation.value = result
-    activeStep.value = 0
+    }, controller)
   } catch (error) {
-    if ((error as Error).name !== 'AbortError' && activeRunToken.value === token) {
-      errorMessage.value = '\u4eff\u771f\u8fd0\u884c\u5931\u8d25\uff1a' + String(error)
+    if (activeRunToken.value === token && !(error instanceof DOMException && error.name === 'AbortError')) {
+      errorMessage.value = '\u4eff\u771f\u8fd0\u884c\u5931\u8d25\uff1a' + (error instanceof Error ? error.message : String(error))
+      clearProgress()
+      progressPercent.value = 0
+      progressText.value = '\u4eff\u771f\u5931\u8d25'
     }
+    return
   } finally {
     window.clearTimeout(watchdogId)
+    if (activeController.value === controller) {
+      activeController.value = null
+    }
     if (activeRunToken.value === token) {
       loading.value = false
     }
   }
   if (activeRunToken.value !== token) return
+  progressPercent.value = 96
+  progressText.value = '\u5df2\u6536\u5230\u4eff\u771f\u7ed3\u679c\uff0c\u6b63\u5728\u66f4\u65b0\u754c\u9762...'
+  simulation.value = result
+  activeStep.value = 0
   await nextTick()
   try {
     renderChart()
     finishProgress('\u4eff\u771f\u5df2\u5b8c\u6210')
-    void refreshSimulationDetailInBackground(simulation.value, token)
+    void refreshSimulationDetailInBackground(result, token)
   } catch (error) {
-    errorMessage.value = '\u4eff\u771f\u5df2\u5b8c\u6210\uff0c\u4f46\u8f68\u8ff9\u56fe\u6e32\u67d3\u5931\u8d25\uff1a' + String(error)
+    errorMessage.value = '\u4eff\u771f\u5df2\u5b8c\u6210\uff0c\u4f46\u8f68\u8ff9\u56fe\u6e32\u67d3\u5931\u8d25\uff1a' + (error instanceof Error ? error.message : String(error))
     clearProgress()
   }
 }
@@ -418,44 +439,57 @@ async function comparePolicies() {
   loading.value = true
   errorMessage.value = ''
   beginProgress('\u6b63\u5728\u8fd0\u884c\u4e24\u79cd\u8c03\u5ea6\u7b56\u7565')
+  const controller = new AbortController()
+  activeController.value = controller
   const watchdogId = window.setTimeout(() => {
     if (activeRunToken.value !== token || !loading.value) return
-    activeController.value?.abort()
+    activeRunToken.value += 1
+    controller.abort()
+    if (activeController.value === controller) {
+      activeController.value = null
+    }
     loading.value = false
     clearProgress()
     progressPercent.value = 0
     progressText.value = '\u7b56\u7565\u5bf9\u6bd4\u8bf7\u6c42\u8d85\u65f6'
-    errorMessage.value = '\u524d\u7aef\u7b49\u5f85 Java \u7b56\u7565\u5bf9\u6bd4\u8d85\u8fc7 5 \u79d2\u3002\u8bf7\u68c0\u67e5 Java \u540e\u7aef\u7ec8\u7aef\u65e5\u5fd7\u3002'
-  }, 5500)
+    errorMessage.value = '\u524d\u7aef\u7b49\u5f85 Java \u7b56\u7565\u5bf9\u6bd4\u8d85\u8fc7 30 \u79d2\u3002\u8bf7\u68c0\u67e5 Java \u540e\u7aef\u7ec8\u7aef\u65e5\u5fd7\u3002'
+  }, RUN_WATCHDOG_MS)
+  let result: ComparisonResult
   try {
-    const result = await request<ComparisonResult>('/api/v1/simulations/compare', {
+    result = await request<ComparisonResult>('/api/v1/simulations/compare', {
       method: 'POST',
       body: JSON.stringify(config.value)
-    })
-    if (activeRunToken.value !== token) return
-    progressPercent.value = 96
-    progressText.value = '\u5bf9\u6bd4\u7ed3\u679c\u5df2\u8fd4\u56de\uff0c\u6b63\u5728\u66f4\u65b0\u754c\u9762...'
-    comparison.value = result
-    simulation.value = result.priority
-    activeStep.value = 0
+    }, controller)
   } catch (error) {
-    if ((error as Error).name !== 'AbortError' && activeRunToken.value === token) {
-      errorMessage.value = '\u7b56\u7565\u5bf9\u6bd4\u5931\u8d25\uff1a' + String(error)
+    if (activeRunToken.value === token && !(error instanceof DOMException && error.name === 'AbortError')) {
+      errorMessage.value = '\u7b56\u7565\u5bf9\u6bd4\u5931\u8d25\uff1a' + (error instanceof Error ? error.message : String(error))
+      clearProgress()
+      progressPercent.value = 0
+      progressText.value = '\u7b56\u7565\u5bf9\u6bd4\u5931\u8d25'
     }
+    return
   } finally {
     window.clearTimeout(watchdogId)
+    if (activeController.value === controller) {
+      activeController.value = null
+    }
     if (activeRunToken.value === token) {
       loading.value = false
     }
   }
   if (activeRunToken.value !== token) return
+  progressPercent.value = 96
+  progressText.value = '\u5bf9\u6bd4\u7ed3\u679c\u5df2\u8fd4\u56de\uff0c\u6b63\u5728\u66f4\u65b0\u754c\u9762...'
+  comparison.value = result
+  simulation.value = result.priority
+  activeStep.value = 0
   await nextTick()
   try {
     renderChart()
     finishProgress('\u7b56\u7565\u5bf9\u6bd4\u5b8c\u6210')
-    void refreshSimulationDetailInBackground(simulation.value, token)
+    void refreshSimulationDetailInBackground(result.priority, token)
   } catch (error) {
-    errorMessage.value = '\u5bf9\u6bd4\u5df2\u5b8c\u6210\uff0c\u4f46\u8f68\u8ff9\u56fe\u6e32\u67d3\u5931\u8d25\uff1a' + String(error)
+    errorMessage.value = '\u5bf9\u6bd4\u5df2\u5b8c\u6210\uff0c\u4f46\u8f68\u8ff9\u56fe\u6e32\u67d3\u5931\u8d25\uff1a' + (error instanceof Error ? error.message : String(error))
     clearProgress()
   }
 }

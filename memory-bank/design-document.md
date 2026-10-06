@@ -311,3 +311,13 @@ Java 后端是 MVP 的领域主服务和主要仿真运行时，FastAPI 是 Agen
 5. 引入知识库检索、实验记忆和自动报告生成。
 6. 增加多轮 Agent 评估、轨迹回放和决策质量指标。
 7. 提升模型保真度和多维场景表达能力。
+
+## Product Direction Update - User Platform First
+
+- The product remains an integrated radar and electronic-countermeasure system digital model.
+- Trajectory playback is temporarily deferred as a user-facing acceptance milestone because the current browser rendering path is unstable.
+- The trajectory domain must remain extensible: its input boundary should allow future real datasets as well as the current synthetic simulation output. The visualization layer must consume a normalized trajectory contract rather than assume one generator.
+- The next delivery priority is a complete user-facing account foundation: registration, login, logout, session state, and protected user workflows.
+- MySQL is the intended durable store for users and future user-owned experiments, simulation runs, datasets, and Agent history.
+- DataGrip is part of the learning workflow: database schema, migrations, permissions, queries, and operational verification should remain inspectable.
+- Every completed feature or material change must update the design, architecture, and progress memory files and include a Git commit walkthrough for the user.

@@ -174,3 +174,27 @@
 - User verified the standalone simulation-viewer.html displays successfully.
 - Current limitation: the Vue manual simulation button can still get stuck in the running state; the stable viewer proves the Java simulation data path is valid and gives a reliable demo/export fallback.
 - Next: repair the Vue simulation UI by reusing the working data mapping and simplifying the run-state lifecycle.
+## Step 16 Verification
+
+- Status: PASSED
+- Wired Vue playback to GET /api/v1/simulations/{runId}/detail through a background refresh, so the run result is rendered before normalized detail loading completes.
+- Added request ownership tokens, explicit AbortController handling, cancellation handling, and a watchdog for manual simulation and policy comparison requests.
+- Preserved the snapshot result as the immediate fallback when the detail endpoint is unavailable.
+- Verified npm.cmd run build: Vue type checking and Vite production build passed.
+- Verified the Java backend test suite: 18 tests, 0 failures, 0 errors.
+- Rebuilt the Spring Boot jar before runtime verification; the stale jar from before Step 15 did not contain the detail route.
+- Verified runtime API flow with the rebuilt jar: health UP, simulation run succeeded, and normalized detail returned truth, observations, fused states, assignments, and metrics.
+- Current limitation: browser-level visual verification is still manual because no browser connector is available in this environment.
+- Next: user review of the Vue run/cancel/detail playback behavior, then continue with broader demo and research-material acceptance work.
+## Step 16.1 Proxy and wait-state repair
+
+- Fixed both Vite configs to proxy Java and Agent requests through 127.0.0.1 instead of localhost, avoiding Windows localhost/IPv6 ambiguity.
+- Replaced the 5-second frontend request timeout with a 30-second timeout and a 32-second run watchdog so normal browser startup or proxy delays do not leave the run button in a short-window race.
+- Verified Vue type checking and production build; verified a temporary Vite server on port 5176 returned the app, default config, and a 60-step simulation through the proxy.
+- The stable standalone viewer remains available under docs/demo/simulation-viewer.html for trajectory and time-step slider verification.
+## Process Rule Update - October 6, 2026
+
+- Product direction now prioritizes the user account and MySQL foundation before browser trajectory playback.
+- Trajectory playback remains a deferred feature with a future normalized source contract for synthetic results and imported real datasets.
+- Design, architecture, and implementation-plan memory files were updated with this priority change and the requirement to teach Git submission after each accepted feature.
+- The previous user-schema code patch was not applied because the relational schema context did not match; no database code change is claimed in this checkpoint.
