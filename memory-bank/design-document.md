@@ -321,3 +321,25 @@ Java 后端是 MVP 的领域主服务和主要仿真运行时，FastAPI 是 Agen
 - MySQL is the intended durable store for users and future user-owned experiments, simulation runs, datasets, and Agent history.
 - DataGrip is part of the learning workflow: database schema, migrations, permissions, queries, and operational verification should remain inspectable.
 - Every completed feature or material change must update the design, architecture, and progress memory files and include a Git commit walkthrough for the user.
+## Account Data Model
+
+The first account milestone uses a durable MySQL `fp_user` table. It stores a unique username, unique email, BCrypt-ready password hash, display name, role, account status, login timestamp, and audit timestamps. Plaintext passwords are never persisted. Future user-owned experiments, datasets, simulation runs, and Agent sessions will reference `user_id`.
+## Registration API
+
+- `POST /api/v1/auth/register` accepts username, email, password, and display name.
+- The backend trims identity fields, normalizes email to lowercase, rejects invalid input, checks username/email uniqueness, hashes the password with BCrypt, and returns a password-free user profile.
+- Duplicate identity returns HTTP 409 with `USER_ALREADY_EXISTS`.
+## Login Session API
+
+- `POST /api/v1/auth/login` accepts username or email plus password.
+- Active users receive a random opaque access token with a seven-day expiry and a password-free user profile.
+- Only the SHA-256 token hash is stored in `fp_user_session`; the raw token is returned to the client and is not persisted.
+- `POST /api/v1/auth/logout` accepts an optional `Authorization: Bearer <token>` header and revokes the matching session.
+- Invalid credentials return HTTP 401 without revealing whether the username/email exists.
+## Public Brand Home
+
+- The first browser view is a prominent FusionPilot brand homepage rather than the simulation workbench.
+- The homepage uses a local code-native radar visual, product positioning copy, capability facts, and clear login/register calls to action.
+- Login and registration remain in the top-right navigation and open an account modal.
+- The simulation workbench and Agent panel are protected by client session state and are rendered only after login succeeds.
+- The attached frontend_design_resources.pdf is a visual reference only; it does not override project requirements or architecture.

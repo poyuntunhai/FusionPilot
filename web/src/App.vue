@@ -159,6 +159,20 @@ type AgentToolResult = {
   result: Record<string, unknown>
   analysis: AgentTrace['analysis']
 }
+type AuthUser = {
+  userId: number
+  username: string
+  email: string
+  displayName: string
+  role: string
+  status: string
+}
+type LoginResponse = {
+  accessToken: string
+  expiresAt: string
+  user: AuthUser
+}
+
 const config = ref<ExperimentConfig>({
   scenarioName: 'multi-target-demo',
   targetCount: 3,
@@ -187,6 +201,14 @@ const activeStep = ref(0)
 const chartElement = ref<HTMLDivElement | null>(null)
 const activeController = ref<AbortController | null>(null)
 const activeRunToken = ref(0)
+const authUser = ref<AuthUser | null>(null)
+const authToken = ref('')
+const authMode = ref<'login' | 'register'>('login')
+const authModalOpen = ref(false)
+const authBusy = ref(false)
+const authError = ref('')
+const authMessage = ref('')
+const authForm = ref({ login: '', username: '', email: '', password: '', displayName: '' })
 let chart: echarts.ECharts | null = null
 let progressTimer: number | undefined
 const REQUEST_TIMEOUT_MS = 30_000
@@ -261,7 +283,10 @@ async function request<T>(
   }, REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken.value ? { Authorization: `Bearer ${authToken.value}` } : {})
+      },
       ...options,
       signal: controller.signal
     })
@@ -281,6 +306,63 @@ async function request<T>(
   } finally {
     window.clearTimeout(timeoutId)
   }
+}
+
+async function submitAuth() {
+  authBusy.value = true
+  authError.value = ''
+  authMessage.value = ''
+  try {
+    if (authMode.value === 'register') {
+      await request<AuthUser>('/api/v1/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: authForm.value.username,
+          email: authForm.value.email,
+          password: authForm.value.password,
+          displayName: authForm.value.displayName
+        })
+      })
+      authMode.value = 'login'
+      authForm.value.login = authForm.value.username
+      authForm.value.password = ''
+      authMessage.value = '注册成功，请使用新账号登录。'
+    } else {
+      const result = await request<LoginResponse>('/api/v1/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          login: authForm.value.login,
+          password: authForm.value.password
+        })
+      })
+      authToken.value = result.accessToken
+      authUser.value = result.user
+      authModalOpen.value = false
+      localStorage.setItem('fusionpilot_access_token', result.accessToken)
+      localStorage.setItem('fusionpilot_user', JSON.stringify(result.user))
+      authForm.value.password = ''
+      authMessage.value = '登录成功。'
+    }
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    authBusy.value = false
+  }
+}
+
+async function logout() {
+  try {
+    if (authToken.value) {
+      await request('/api/v1/auth/logout', { method: 'POST' })
+    }
+  } catch {
+    // Clear local state even if the server is unavailable.
+  }
+  authToken.value = ''
+  authUser.value = null
+  localStorage.removeItem('fusionpilot_access_token')
+  localStorage.removeItem('fusionpilot_user')
+  authMessage.value = '已退出登录。'
 }
 
 function buildStepResults(base: SimulationResult, detail: SimulationRunDetail): StepResult[] {
@@ -508,7 +590,10 @@ async function requestAgent<T>(url: string, options?: RequestInit): Promise<T> {
   const timeoutId = window.setTimeout(() => controller.abort(), 15000)
   try {
     const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken.value ? { Authorization: `Bearer ${authToken.value}` } : {})
+      },
       ...options,
       signal: controller.signal
     })
@@ -706,6 +791,17 @@ function resizeChart() {
 
 onMounted(async () => {
   window.addEventListener('resize', resizeChart)
+  const storedToken = localStorage.getItem('fusionpilot_access_token')
+  const storedUser = localStorage.getItem('fusionpilot_user')
+  if (storedToken && storedUser) {
+    try {
+      authToken.value = storedToken
+      authUser.value = JSON.parse(storedUser) as AuthUser
+    } catch {
+      localStorage.removeItem('fusionpilot_access_token')
+      localStorage.removeItem('fusionpilot_user')
+    }
+  }
 })
 
 onBeforeUnmount(() => {
@@ -724,10 +820,54 @@ onBeforeUnmount(() => {
           <div class="brand-subtitle">&#38647;&#36798;&#20915;&#31574;&#23454;&#39564;&#23460; / &#25968;&#23383;&#23383;&#22411;</div>
         </div>
       </div>
-      <div class="topbar-status"><span class="status-dot"></span><span>&#26412;&#22320;&#20223;&#30495;</span><span class="status-divider"></span><span>JAVA &#26680;&#24515; : 8080</span></div>
+      <div class="topbar-status">
+        <span class="status-dot"></span><span>&#26412;&#22320;&#20223;&#30495;</span><span class="status-divider"></span><span>JAVA &#26680;&#24515; : 8080</span>
+        <span class="status-divider"></span>
+        <span v-if="authUser">{{ authUser.displayName || authUser.username }}</span>
+        <button v-if="authUser" class="topbar-action" title="&#36864;&#20986;&#30331;&#24405;" @click="logout">&#36864;&#20986;</button>
+        <template v-else>
+          <button class="topbar-action" @click="authMode = 'login'; authModalOpen = true">&#30331;&#24405;</button>
+          <button class="topbar-action accent" @click="authMode = 'register'; authModalOpen = true">&#27880;&#20876;</button>
+        </template>
+      </div>
     </header>
 
     <main class="workspace">
+      <section v-if="!authUser" class="landing-hero">
+        <div class="landing-copy">
+          <p class="landing-eyebrow">FUSIONPILOT / DIGITAL BATTLESPACE</p>
+          <h1>FusionPilot</h1>
+          <p class="landing-title">&#19968;&#20307;&#21270;&#38647;&#36798;&#19982;&#30005;&#23376;&#23545;&#25239;&#31995;&#32479;&#25968;&#23383;&#27169;&#22411;</p>
+          <p class="landing-lede">&#23558;&#38647;&#36798;&#35266;&#27979;&#12289;&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;&#12289;&#36164;&#28304;&#35843;&#24230;&#19982; Agent &#23454;&#39564;&#21327;&#20316;&#32467;&#21512;&#21040;&#19968;&#20010;&#21487;&#22797;&#29616;&#30340;&#25968;&#23383;&#23454;&#39564;&#23460;&#12290;</p>
+          <div class="landing-actions">
+            <button class="primary-button landing-primary" @click="authMode = 'login'; authModalOpen = true">&#36827;&#20837;&#23454;&#39564;&#23460; <span>&rarr;</span></button>
+            <button class="landing-link" @click="authMode = 'register'; authModalOpen = true">&#21019;&#24314;&#36134;&#21495;</button>
+          </div>
+          <div class="landing-facts">
+            <div><strong>04</strong><span>&#26680;&#24515;&#27169;&#22359;</span></div>
+            <div><strong>03</strong><span>&#35266;&#27979;&#28304;</span></div>
+            <div><strong>01</strong><span>&#32479;&#19968;&#23454;&#39564;&#24037;&#20316;&#21488;</span></div>
+          </div>
+        </div>
+        <div class="radar-stage" aria-label="FusionPilot radar visualization">
+          <div class="radar-grid"></div>
+          <div class="radar-scope">
+            <div class="radar-ring ring-one"></div>
+            <div class="radar-ring ring-two"></div>
+            <div class="radar-ring ring-three"></div>
+            <div class="radar-axis axis-x"></div>
+            <div class="radar-axis axis-y"></div>
+            <div class="radar-sweep"></div>
+            <span class="radar-blip blip-one"></span>
+            <span class="radar-blip blip-two"></span>
+            <span class="radar-blip blip-three"></span>
+            <span class="radar-core"></span>
+          </div>
+          <div class="radar-readout readout-top">SENSOR FUSION <strong>ONLINE</strong></div>
+          <div class="radar-readout readout-bottom">TRACKS <strong>03 / 03</strong></div>
+        </div>
+      </section>
+
       <section class="intro-row">
         <div>
           <p class="eyebrow">&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;</p>
@@ -737,12 +877,35 @@ onBeforeUnmount(() => {
         <div class="run-summary"><span class="summary-label">&#36816;&#34892; ID</span><strong>{{ simulation?.runId?.slice(0, 8) ?? '--' }}</strong></div>
       </section>
 
-      <div v-if="errorMessage" class="alert">
+      <div v-if="authModalOpen" class="auth-overlay" @click.self="authModalOpen = false">
+        <section class="auth-modal panel">
+          <div class="panel-heading">
+            <div><span class="panel-kicker">ACCOUNT ACCESS</span><h2>{{ authMode === 'login' ? '&#30331;&#24405; FusionPilot' : '&#27880;&#20876; FusionPilot' }}</h2></div>
+            <button class="icon-button" title="&#20851;&#38381;" @click="authModalOpen = false">&times;</button>
+          </div>
+          <div class="auth-tabs">
+            <button :class="{ active: authMode === 'login' }" @click="authMode = 'login'; authError = ''">&#30331;&#24405;</button>
+            <button :class="{ active: authMode === 'register' }" @click="authMode = 'register'; authError = ''">&#27880;&#20876;</button>
+          </div>
+          <form class="auth-form" @submit.prevent="submitAuth">
+            <label v-if="authMode === 'register'" class="field"><span>&#29992;&#25143;&#21517;</span><input v-model="authForm.username" required minlength="3" maxlength="50" autocomplete="username" /></label>
+            <label v-else class="field"><span>&#29992;&#25143;&#21517;&#25110;&#37038;&#31665;</span><input v-model="authForm.login" required autocomplete="username" /></label>
+            <label v-if="authMode === 'register'" class="field"><span>&#37038;&#31665;</span><input v-model="authForm.email" required type="email" autocomplete="email" /></label>
+            <label v-if="authMode === 'register'" class="field"><span>&#26174;&#31034;&#21517;&#31216;</span><input v-model="authForm.displayName" required maxlength="80" /></label>
+            <label class="field"><span>&#23494;&#30721;</span><input v-model="authForm.password" required minlength="8" type="password" autocomplete="current-password" /></label>
+            <button class="primary-button auth-submit" :disabled="authBusy" type="submit">{{ authBusy ? '&#25552;&#20132;&#20013;...' : authMode === 'login' ? '&#30331;&#24405;' : '&#21019;&#24314;&#36134;&#21495;' }}</button>
+          </form>
+          <p v-if="authMessage" class="auth-message">{{ authMessage }}</p>
+          <p v-if="authError" class="auth-error">{{ authError }}</p>
+        </section>
+      </div>
+
+      <div v-if="authUser && errorMessage" class="alert">
         <span>{{ errorMessage }}</span>
         <button class="icon-button" title="&#20851;&#38381;&#25552;&#31034;" @click="errorMessage = ''">&times;</button>
       </div>
 
-      <section class="dashboard-grid">
+      <section v-if="authUser" class="dashboard-grid">
         <aside class="panel config-panel">
           <div class="panel-heading">
             <div><span class="panel-kicker">01 / &#22330;&#26223;</span><h2>&#23454;&#39564;&#37197;&#32622;</h2></div>
@@ -837,7 +1000,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
       </section>
-      <section class="panel agent-panel">
+      <section v-if="authUser" class="panel agent-panel">
         <div class="panel-heading">
           <div><span class="panel-kicker">06 / AGENT</span><h2>&#23454;&#39564;&#21327;&#20316;&#21161;&#25163;</h2></div>
           <span class="policy-tag">{{ agentSession?.status ?? '&#26410;&#24320;&#22987;' }}</span>

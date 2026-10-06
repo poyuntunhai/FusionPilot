@@ -92,6 +92,36 @@ create table if not exists fp_step_metric (
     constraint uk_metric_step unique (step_id)
 );
 
+create table if not exists fp_user (
+    user_id bigint primary key auto_increment,
+    username varchar(50) not null unique,
+    email varchar(190) not null unique,
+    password_hash varchar(255) not null,
+    display_name varchar(80) not null,
+    role varchar(30) not null default 'USER',
+    status varchar(30) not null default 'ACTIVE',
+    last_login_at timestamp null,
+    created_at timestamp not null default current_timestamp,
+    updated_at timestamp not null default current_timestamp on update current_timestamp,
+    index idx_fp_user_status (status),
+    index idx_fp_user_created_at (created_at)
+);
+
+create table if not exists fp_user_session (
+    session_id bigint primary key auto_increment,
+    user_id bigint not null,
+    token_hash varchar(64) not null unique,
+    expires_at timestamp not null,
+    created_at timestamp not null default current_timestamp,
+    revoked_at timestamp null,
+    constraint fk_session_user
+        foreign key (user_id) references fp_user(user_id)
+        on delete cascade,
+    index idx_fp_session_user (user_id),
+    index idx_fp_session_expiry (expires_at),
+    index idx_fp_session_revoked (revoked_at)
+);
+
 create table if not exists fp_agent_session (
     trace_id varchar(64) primary key,
     goal varchar(1000) not null,

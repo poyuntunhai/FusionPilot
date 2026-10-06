@@ -167,3 +167,26 @@
 - Trajectory playback is deferred, but its future contract must accept both generated simulation trajectories and imported real datasets. A normalized trajectory source boundary should prevent the visualization from depending on one data generator.
 - MySQL and DataGrip are first-class development tools for learning front-end/backend/database interaction and operations.
 - Each completed feature or material change must be recorded in design-document.md, architecture.md, and progress.md, followed by a user-facing Git commit walkthrough.
+## Account Persistence Foundation
+
+- `backend/src/main/resources/schema.sql` now creates `fp_user` for durable account records in the default and test database initialization path.
+- `backend/src/main/resources/application-mysql.yml` uses `127.0.0.1` for the local MySQL profile, matching the Windows local-service convention.
+- `docs/mysql/schema-relational.sql` mirrors the account table for DataGrip/MySQL relational setup.
+- Authentication endpoints and password hashing are intentionally not included in this milestone; they are the next Java feature built on this schema.
+## Registration Feature
+
+- `backend/src/main/java/com/fusionpilot/backend/account/` owns account request/response models, JDBC persistence, registration service logic, and the REST controller.
+- `spring-security-crypto` supplies BCrypt without enabling Spring Security auto-configuration yet; authentication/session behavior is the next milestone.
+- `GlobalExceptionHandler` maps duplicate account identity to a stable 409 API error.
+## Login Session Feature
+
+- `fp_user_session` stores hashed bearer tokens, expiry, revocation time, and the owning user ID with a foreign key to `fp_user`.
+- `UserRepository` reads login credentials and updates `last_login_at`; `SessionRepository` creates and revokes sessions.
+- `UserService` owns BCrypt verification, secure token generation, SHA-256 token hashing, and seven-day expiry policy.
+- The current milestone provides the auth API contract; a request filter for protecting simulation/user routes will be added after the Vue client can retain and send the token.
+## Public Homepage and Client Gate
+
+- web/src/App.vue renders a public FusionPilot landing state before authentication and preserves the existing workbench as the authenticated state.
+- web/src/styles.css provides the local radar/sensor visual, responsive hero layout, and top-right account actions without an external paid asset dependency.
+- Login and registration use the existing Java auth endpoints; successful login stores the opaque access token and user profile in browser local storage.
+- Simulation and Agent requests attach the bearer token when available. The current UI gate is a presentation boundary; backend route authorization remains a follow-up hardening step.

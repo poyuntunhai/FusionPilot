@@ -198,3 +198,43 @@
 - Trajectory playback remains a deferred feature with a future normalized source contract for synthetic results and imported real datasets.
 - Design, architecture, and implementation-plan memory files were updated with this priority change and the requirement to teach Git submission after each accepted feature.
 - The previous user-schema code patch was not applied because the relational schema context did not match; no database code change is claimed in this checkpoint.
+## Account Persistence Foundation Verification
+
+- Status: PASSED
+- Added the MySQL `fp_user` table with unique username/email constraints, password-hash storage, role/status fields, login timestamp, and audit timestamps.
+- Updated the MySQL profile to use `127.0.0.1` and mirrored the table in the relational schema documentation.
+- Verified the local MySQL80 service and `fusionpilot` credentials through MySQL CLI.
+- Applied `backend/src/main/resources/schema.sql` successfully and confirmed `fp_user` with `DESCRIBE`.
+- Re-applied `docs/mysql/schema-relational.sql` successfully; schema creation is idempotent.
+- Verified Maven backend tests: 18 tests, 0 failures, 0 errors.
+- Next: implement Java user repository and registration API; after verification, pause for the user's Git commit.
+## Registration API Verification
+
+- Status: PASSED
+- Added `POST /api/v1/auth/register` with validation, duplicate detection, BCrypt password hashing, and password-free response DTO.
+- Verified Maven backend tests: 18 tests, 0 failures, 0 errors.
+- Rebuilt and started the backend with the MySQL profile on temporary port 8090; MySQL connection succeeded.
+- Registered `codex_demo` successfully, confirmed the row in MySQL, and confirmed the stored password begins with the BCrypt `$2a$` prefix.
+- Repeated registration returned HTTP 409 for the duplicate username/email.
+- DataGrip automation was unavailable because the Windows computer-use helper failed to start twice; MySQL CLI verification was used instead.
+- Next: implement login using the same account boundary, then pause for user verification and Git commit.
+## Login Session API Verification
+
+- Status: PASSED
+- Added `fp_user_session` with user foreign key, token hash uniqueness, expiry, and revocation indexes.
+- Added `POST /api/v1/auth/login` and `POST /api/v1/auth/logout`.
+- Login accepts username or email, verifies BCrypt, creates a random seven-day bearer token, and stores only its SHA-256 hash.
+- Logout revokes the matching session using the Bearer token header.
+- Verified Maven backend tests: 18 tests, 0 failures, 0 errors.
+- Verified on MySQL profile port 8091: successful login, logout, revoked session row, updated `last_login_at`, and HTTP 401 for an incorrect password.
+- Next: build Vue registration/login/logout screens and token state handling, then pause for user verification and Git commit.
+## FusionPilot Public Homepage Verification
+
+- Status: PASSED
+- Added a high-visibility public FusionPilot landing state with brand title, product positioning, capability facts, radar-style local visual, and login/register calls to action.
+- Kept login and registration in the top-right navigation with a modal account flow.
+- Kept the existing simulation workbench and Agent panel hidden until a valid client login session exists.
+- Verified npm.cmd exec vue-tsc -- --noEmit.
+- Verified npm.cmd run build; Vite production build completed successfully. Vite reported only the existing large ECharts bundle warning.
+- The attached PDF was treated as a visual reference, not as a project instruction document. No paid or external asset dependency was added.
+- Next: user opens the site and verifies the visual direction, then commit the account and homepage milestone together.
