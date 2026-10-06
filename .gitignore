@@ -1,0 +1,31 @@
+# IDE
+.idea/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Java
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+.m2/
+.tools/
+
+# Python
+agent-service/.venv/
+agent-service.venv/
+agent-service/__pycache__/
+agent-service/**/__pycache__/
+agent-service/.pytest_cache/
+
+# Node
+web/node_modules/
+web/dist/
+web/.tmp/
+
+# Local configuration and generated data
+.env
+data/
+*.sqlite
+*.sqlite3
+*.log

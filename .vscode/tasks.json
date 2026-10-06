@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "FusionPilot: backend",
+      "type": "shell",
+      "command": "cd backend; .\\mvnw.cmd spring-boot:run",
+      "windows": {
+        "command": "cd backend; .\\mvnw.cmd spring-boot:run"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "FusionPilot: agent-service",
+      "type": "shell",
+      "command": "cd agent-service; python -m uvicorn app.main:app --reload --port 8000",
+      "problemMatcher": []
+    },
+    {
+      "label": "FusionPilot: web",
+      "type": "shell",
+      "command": "cd web; npm run dev",
+      "problemMatcher": []
+    }
+  ]
+}
