@@ -343,3 +343,44 @@ The first account milestone uses a durable MySQL `fp_user` table. It stores a un
 - Login and registration remain in the top-right navigation and open an account modal.
 - The simulation workbench and Agent panel are protected by client session state and are rendered only after login succeeds.
 - The attached frontend_design_resources.pdf is a visual reference only; it does not override project requirements or architecture.
+## Authentication Security Foundation
+
+- Registration, login, and password-reset requests use a one-time arithmetic captcha challenge in the local MVP.
+- Password recovery uses a two-step flow: request a short-lived reset token, then confirm a new password. Only the token hash is persisted.
+- Resetting a password revokes all existing sessions for that user.
+- Development mode may return the reset token in the API response for local learning; production mode must replace this with an email provider and set the flag to false.
+- Admin operations require a valid active Bearer session and the `ADMIN` role. Admins can list users, change active status, and revoke sessions.
+## Password Visibility Control
+
+- Login, registration, and password-reset forms provide a right-aligned eye control for toggling password visibility.
+- Password fields remain hidden by default and the control exposes a tooltip and accessible label for its current action.
+## Simulation Authorization Boundary
+
+- The browser must attach `Authorization: Bearer <access-token>` to simulation execution and result requests.
+- The Java backend rejects missing, malformed, expired, revoked, or inactive-user sessions with HTTP 401 before simulation work is executed.
+- Protected endpoints are `POST /api/v1/simulations/run`, `GET /api/v1/simulations/history`, `GET /api/v1/simulations/{runId}`, `GET /api/v1/simulations/{runId}/detail`, and `POST /api/v1/simulations/compare`.
+- This boundary prevents a user from bypassing the public homepage gate by calling the simulation API directly.
+## Agent and Simulation Token Flow
+
+- Browser requests to Agent execution endpoints carry the same bearer token used by direct simulation requests.
+- FastAPI forwards that header to Java for simulation and policy-comparison tool calls.
+- A missing or invalid token is therefore rejected by the Java domain backend instead of being bypassed through FastAPI.
+## Multi-Model Agent Design
+
+- The Agent supports `rule`, `openai`, `anthropic`, `deepseek`, `qwen`, and `zhipu` provider modes.
+- Provider selection is configuration-driven through `MODEL_PROVIDER`, `MODEL_NAME`, `MODEL_API_BASE_URL`, and `MODEL_API_KEY`; the default is local rule mode.
+- The model planner must return a structured experiment plan. Unavailable providers, missing keys, or invalid JSON may fall back to the deterministic planner when `MODEL_FALLBACK_TO_RULE=true`.
+- Provider-specific credentials stay in local environment variables. They must never be committed to Git or returned by the `/api/v1/agent/models` endpoint.
+- The model is an assistant for intent interpretation and plan wording. Simulation, metrics, and evidence remain Java-owned and structured.
+## Agent Research Cockpit
+
+- Authenticated users can open the Agent at `/agent`; the existing simulation workbench remains available at `/`.
+- The Agent page must communicate its collaboration role in the integrated radar and electronic-countermeasure digital model, rather than present as a generic chat page.
+- The primary workflow is mission brief -> model/rule plan -> user review -> confirmation -> domain tool execution -> structured evidence.
+- Agent capability areas shown in the interface are observation-source reasoning, information fusion, resource scheduling, and interference-condition evaluation.
+- Agent results remain grounded in Java simulation data and structured metrics; the model may propose and explain but cannot invent simulation results.## Agent Security Boundary
+
+- Every non-health Agent endpoint requires the browser's Java-issued bearer session.
+- FastAPI validates the token through Java `/api/v1/auth/me` before returning model capabilities, creating plans, or accessing tools and traces.
+- A trace is owned by the authenticated `userId`; another account receives a not-found response rather than trace details.
+- Direct simulation execution still passes the same token to Java, preserving one authorization source and making revocation effective at the simulation boundary.

@@ -1,6 +1,7 @@
 from typing import Any
 
 from .java_client import JavaBackendError, get_default_config
+from .model_planner import build_plan_with_model
 from .models import (
     AgentTrace,
     ConfirmResponse,
@@ -9,7 +10,6 @@ from .models import (
     ResultAnalysis,
     ToolCallResult,
 )
-from .rules import build_plan
 from .tools import call_tool
 from .trace import trace_store
 
@@ -22,13 +22,13 @@ class AgentWorkflowError(RuntimeError):
         self.status_code = status_code
 
 
-async def create_session(request: PlanRequest) -> AgentTrace:
+async def create_session(request: PlanRequest, owner_user_id: int) -> AgentTrace:
     try:
         default_config = await get_default_config()
     except JavaBackendError:
         raise
-    plan = build_plan(request, default_config)
-    trace = trace_store.create(request, plan)
+    plan = await build_plan_with_model(request, default_config)
+    trace = trace_store.create(request, plan, owner_user_id)
     trace_store.append(trace.trace_id, "request_received", {"goal": request.goal})
     trace_store.append(
         trace.trace_id,
@@ -43,8 +43,8 @@ async def create_session(request: PlanRequest) -> AgentTrace:
     return trace
 
 
-def confirm_session(trace_id: str) -> ConfirmResponse:
-    trace = _require_trace(trace_id)
+def confirm_session(trace_id: str, owner_user_id: int) -> ConfirmResponse:
+    trace = _require_trace(trace_id, owner_user_id)
     trace_store.update(trace_id, confirmed=True, status="CONFIRMED")
     trace_store.append(trace_id, "confirmation_received", {"confirmed": True})
     return ConfirmResponse(
@@ -54,8 +54,13 @@ def confirm_session(trace_id: str) -> ConfirmResponse:
     )
 
 
-async def execute_session_tool(trace_id: str, request: ExecuteToolRequest) -> ToolCallResult:
-    trace = _require_trace(trace_id)
+async def execute_session_tool(
+    trace_id: str,
+    request: ExecuteToolRequest,
+    authorization: str | None = None,
+    owner_user_id: int | None = None,
+) -> ToolCallResult:
+    trace = _require_trace(trace_id, owner_user_id)
     if not trace.confirmed:
         raise AgentWorkflowError(
             "CONFIRMATION_REQUIRED",
@@ -72,6 +77,7 @@ async def execute_session_tool(trace_id: str, request: ExecuteToolRequest) -> To
             request.tool_name,
             trace.plan.experiment_config,
             trace.last_result,
+            authorization,
         )
     except ValueError as exc:
         raise AgentWorkflowError("INVALID_TOOL_INPUT", str(exc), 400) from exc
@@ -118,9 +124,9 @@ def analyze_result(result: dict[str, Any]) -> ResultAnalysis:
     )
 
 
-def _require_trace(trace_id: str) -> AgentTrace:
+def _require_trace(trace_id: str, owner_user_id: int | None = None) -> AgentTrace:
     trace = trace_store.get(trace_id)
-    if trace is None:
+    if trace is None or (owner_user_id is not None and trace.owner_user_id != owner_user_id):
         raise AgentWorkflowError(
             "TRACE_NOT_FOUND",
             f"Agent trace not found: {trace_id}",

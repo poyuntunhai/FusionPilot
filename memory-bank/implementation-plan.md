@@ -276,3 +276,40 @@
 4. Verify browser-to-Java-to-MySQL interaction and document DataGrip checks.
 5. Add ownership boundaries for user experiments and simulation history.
 6. Return to the normalized trajectory-source contract and browser playback after the account foundation is accepted.
+## Account Security Milestone Plan
+
+1. Add local captcha challenge and require it for registration/login; verify one-time consumption and expiry.
+2. Add password-reset token persistence, password replacement, and session revocation; verify invalid and reused tokens.
+3. Add active Bearer-session lookup and admin role checks; verify 401, 403, and 200 paths.
+4. Connect the Vue auth modal to captcha and password-reset flows.
+5. Add production adapters for email delivery and external bot protection after local flow acceptance.
+## Simulation Route Protection Milestone
+
+1. Require active Bearer authentication in all simulation run and result endpoints.
+2. Preserve public account bootstrap and default-configuration routes.
+3. Verify missing-token requests return 401 and valid-token requests still execute and query results.
+4. Keep the Java backend as the authorization owner; the Vue client only forwards the stored token.
+## Agent Token Forwarding Follow-up
+
+1. Forward the browser Authorization header from FastAPI Agent execution endpoints to Java simulation calls.
+2. Keep authentication validation in Java and keep FastAPI stateless with respect to user sessions.
+3. Add dependency installation and FastAPI integration tests in the next environment-validation pass.
+## Multi-Model Agent Milestone
+
+1. Restore the Python virtual-environment dependencies and load local `.env` configuration.
+2. Add provider presets and a common HTTP gateway for OpenAI-compatible APIs and Anthropic Messages.
+3. Connect model-generated JSON plans to the existing `ExperimentPlan` contract with deterministic fallback.
+4. Expose provider capability metadata without exposing API keys.
+5. Verify rule mode, provider parsing, Python tests, and source compilation before enabling real keys.
+## Agent Research Cockpit Milestone
+
+1. Add an authenticated `/agent` view while preserving the simulation workbench at `/`.
+2. Show model status, domain capabilities, plan review, tool trace, and structured evidence.
+3. Reuse the existing Agent session and execution APIs so the page does not duplicate simulation logic.
+4. Verify route loading, Vue type checking, production build, and domain-oriented Agent workflow tests.## Agent Authorization and Ownership Milestone
+
+1. Add Java `/api/v1/auth/me` as the shared authenticated-profile endpoint.
+2. Protect all non-health FastAPI Agent routes with Java bearer validation.
+3. Bind Agent traces to the authenticated user and prevent cross-user read, confirm, and execute operations.
+4. Preserve bearer forwarding when Agent tools call protected Java simulation APIs.
+5. Verify Python tests, Java authentication behavior, and live FastAPI-to-Java route behavior.

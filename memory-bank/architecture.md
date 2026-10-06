@@ -190,3 +190,46 @@
 - web/src/styles.css provides the local radar/sensor visual, responsive hero layout, and top-right account actions without an external paid asset dependency.
 - Login and registration use the existing Java auth endpoints; successful login stores the opaque access token and user profile in browser local storage.
 - Simulation and Agent requests attach the bearer token when available. The current UI gate is a presentation boundary; backend route authorization remains a follow-up hardening step.
+## Authentication Security Foundation
+
+- `CaptchaService` issues short-lived, single-use arithmetic challenges for the local auth flow; the answer is stored only as a BCrypt hash in memory.
+- `PasswordResetRepository` persists short-lived SHA-256 reset-token hashes in `fp_password_reset_token`; raw tokens are never stored.
+- `UserService.authenticateBearer()` resolves an active session from `fp_user_session`; `requireAdmin()` enforces the active `ADMIN` role.
+- `AdminController` owns user listing, status changes, and forced session revocation under the admin boundary.
+- `UserController` owns captcha issuance and password-reset request/confirmation endpoints.
+- The current captcha and reset-token delivery are local development implementations. SMTP/Resend/Turnstile integration remains an adapter-level follow-up.
+## Password Visibility Control
+
+- `web/src/App.vue` owns `showPassword` and `showNewPassword` UI state for password and reset-password fields.
+- `web/src/styles.css` renders the eye control locally without adding an icon dependency.
+- This is presentation-only; password values are still submitted through the existing HTTPS/API boundary and are never persisted in the browser as plain account data.
+## Simulation API Route Protection
+
+- `SimulationController` now requires an active Bearer session before running a simulation or reading simulation history, detail, result, or policy comparison data.
+- Authentication remains in the Java account boundary through `UserService.authenticateBearer()`; Vue only supplies the token and does not implement authorization.
+- Public account bootstrap routes remain separate from protected simulation routes. `GET /api/v1/experiments/default` remains available for loading the initial form, while simulation execution and stored results require login.
+- `JdbcSimulationDetailRepository` accepts both named and generic generated-key responses so normalized detail persistence works with MySQL and H2.
+## Agent Authorization Forwarding
+
+- FastAPI remains an orchestration boundary and does not validate or persist Java sessions.
+- Agent simulation and comparison calls accept the incoming Authorization header and forward it to Java unchanged.
+- Java remains the single owner of bearer-session validation and simulation authorization.
+## Multi-Model Agent Gateway
+
+- `agent-service/app/model_gateway.py` is the provider boundary for external model calls. It supports OpenAI, Claude, DeepSeek, Qwen, and Zhipu through provider presets.
+- OpenAI, DeepSeek, Qwen, and Zhipu use the OpenAI-compatible chat-completions protocol; Claude uses the Anthropic Messages protocol.
+- `agent-service/app/model_planner.py` converts model JSON into the existing `ExperimentPlan` DTO and falls back to `rules.py` when configured.
+- `agent-service/app/config.py` loads local `.env` values without persisting API keys in source control.
+- Java remains the source of truth for simulation facts. External models only propose plans and never execute domain logic directly.
+## Domain Agent Research Cockpit
+
+- The Vue application now has two authenticated views: `/` for the simulation workbench and `/agent` for the Agent research cockpit.
+- The Agent cockpit presents model status, mission brief, plan review, tool trace, and structured evidence as first-class research workflow areas.
+- Domain copy and capability labels explicitly connect Agent work to radar, EO/IR, prior-knowledge observations, information fusion, resource scheduling, and noise/missing/delay countermeasure evaluation.
+- Existing Agent session and tool functions are reused; the subpage is a presentation and workflow boundary, not a second simulation implementation.## Agent Authorization and Trace Ownership
+
+- FastAPI Agent routes use the `require_agent_user` dependency. It forwards the bearer token to Java `GET /api/v1/auth/me` and does not maintain a second session authority.
+- Agent health remains public for service probes; planning, model metadata, tool metadata, configuration, execution, and trace routes require an active Java session.
+- `AgentTrace.owner_user_id` binds each in-memory trace to the authenticated Java user. Confirm, execute, and read operations return `TRACE_NOT_FOUND` for another user's trace.
+- The Agent forwards the validated bearer token to Java simulation calls so the Java domain boundary remains authoritative for simulation access.
+- `UserController.me` exposes the minimal authenticated profile needed by the Agent boundary. `UserRepository.insert` requests only `user_id` as the generated key for H2/MySQL compatibility.

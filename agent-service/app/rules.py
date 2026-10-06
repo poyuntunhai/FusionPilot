@@ -45,6 +45,7 @@ def build_plan(request: PlanRequest, default_config: dict) -> ExperimentPlan:
             "Metric summary suitable for visualization and research notes.",
         ],
         requires_confirmation=True,
+        planner="rule",
     )
 
 

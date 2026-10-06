@@ -122,6 +122,21 @@ create table if not exists fp_user_session (
     index idx_fp_session_revoked (revoked_at)
 );
 
+create table if not exists fp_password_reset_token (
+    reset_id bigint primary key auto_increment,
+    user_id bigint not null,
+    token_hash varchar(64) not null unique,
+    expires_at timestamp not null,
+    created_at timestamp not null default current_timestamp,
+    used_at timestamp null,
+    constraint fk_password_reset_user
+        foreign key (user_id) references fp_user(user_id)
+        on delete cascade,
+    index idx_password_reset_user (user_id),
+    index idx_password_reset_expiry (expires_at),
+    index idx_password_reset_used (used_at)
+);
+
 create table if not exists fp_agent_session (
     trace_id varchar(64) primary key,
     goal varchar(1000) not null,

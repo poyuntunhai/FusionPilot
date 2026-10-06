@@ -135,6 +135,8 @@ type AgentPlan = {
   execution_steps: string[]
   expected_outputs: string[]
   requires_confirmation: boolean
+  planner?: string
+  model?: string | null
 }
 
 type AgentTrace = {
@@ -172,6 +174,33 @@ type LoginResponse = {
   expiresAt: string
   user: AuthUser
 }
+type CaptchaChallenge = {
+  challengeId: string
+  question: string
+  expiresAt: string
+}
+type PasswordResetResponse = {
+  message: string
+  developmentResetToken: string | null
+}
+type AgentView = 'workbench' | 'agent'
+type AgentModelStatus = {
+  current: {
+    provider: string
+    label: string
+    protocol: string
+    model: string | null
+    configured: boolean
+    fallbackToRule: boolean
+  }
+  providers: Array<{
+    provider: string
+    label: string
+    protocol: string
+    defaultModel: string
+    configured: boolean
+  }>
+}
 
 const config = ref<ExperimentConfig>({
   scenarioName: 'multi-target-demo',
@@ -203,12 +232,18 @@ const activeController = ref<AbortController | null>(null)
 const activeRunToken = ref(0)
 const authUser = ref<AuthUser | null>(null)
 const authToken = ref('')
-const authMode = ref<'login' | 'register'>('login')
+const authMode = ref<'login' | 'register' | 'forgot' | 'reset'>('login')
 const authModalOpen = ref(false)
 const authBusy = ref(false)
 const authError = ref('')
 const authMessage = ref('')
-const authForm = ref({ login: '', username: '', email: '', password: '', displayName: '' })
+const captcha = ref<CaptchaChallenge | null>(null)
+const captchaAnswer = ref('')
+const showPassword = ref(false)
+const showNewPassword = ref(false)
+const authForm = ref({ login: '', username: '', email: '', password: '', displayName: '', resetToken: '', newPassword: '' })
+const activeView = ref<AgentView>(window.location.pathname === '/agent' ? 'agent' : 'workbench')
+const agentModelStatus = ref<AgentModelStatus | null>(null)
 let chart: echarts.ECharts | null = null
 let progressTimer: number | undefined
 const REQUEST_TIMEOUT_MS = 30_000
@@ -320,7 +355,9 @@ async function submitAuth() {
           username: authForm.value.username,
           email: authForm.value.email,
           password: authForm.value.password,
-          displayName: authForm.value.displayName
+          displayName: authForm.value.displayName,
+          captchaId: captcha.value?.challengeId,
+          captchaAnswer: captchaAnswer.value
         })
       })
       authMode.value = 'login'
@@ -332,7 +369,9 @@ async function submitAuth() {
         method: 'POST',
         body: JSON.stringify({
           login: authForm.value.login,
-          password: authForm.value.password
+          password: authForm.value.password,
+          captchaId: captcha.value?.challengeId,
+          captchaAnswer: captchaAnswer.value
         })
       })
       authToken.value = result.accessToken
@@ -340,9 +379,78 @@ async function submitAuth() {
       authModalOpen.value = false
       localStorage.setItem('fusionpilot_access_token', result.accessToken)
       localStorage.setItem('fusionpilot_user', JSON.stringify(result.user))
+      void loadAgentModelStatus()
       authForm.value.password = ''
       authMessage.value = '登录成功。'
     }
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    authBusy.value = false
+  }
+}
+
+async function loadCaptcha() {
+  try {
+    captcha.value = await request<CaptchaChallenge>('/api/v1/auth/captcha')
+    captchaAnswer.value = ''
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+async function openAuth(mode: 'login' | 'register' | 'forgot') {
+  authMode.value = mode
+  authModalOpen.value = true
+  authError.value = ''
+  authMessage.value = ''
+  await loadCaptcha()
+}
+
+async function submitForgot() {
+  authBusy.value = true
+  authError.value = ''
+  authMessage.value = ''
+  try {
+    const result = await request<PasswordResetResponse>('/api/v1/auth/password-reset/request', {
+      method: 'POST',
+      body: JSON.stringify({
+        login: authForm.value.login,
+        captchaId: captcha.value?.challengeId,
+        captchaAnswer: captchaAnswer.value
+      })
+    })
+    authMessage.value = result.developmentResetToken
+      ? `${result.message} Token: ${result.developmentResetToken}`
+      : result.message
+    if (result.developmentResetToken) {
+      authForm.value.resetToken = result.developmentResetToken
+      authMode.value = 'reset'
+    }
+    await loadCaptcha()
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    authBusy.value = false
+  }
+}
+
+async function submitReset() {
+  authBusy.value = true
+  authError.value = ''
+  try {
+    await request('/api/v1/auth/password-reset/confirm', {
+      method: 'POST',
+      body: JSON.stringify({
+        resetToken: authForm.value.resetToken,
+        newPassword: authForm.value.newPassword
+      })
+    })
+    authMode.value = 'login'
+    authForm.value.password = ''
+    authForm.value.newPassword = ''
+    authMessage.value = '密码已重置，请使用新密码登录。'
+    await loadCaptcha()
   } catch (error) {
     authError.value = error instanceof Error ? error.message : String(error)
   } finally {
@@ -362,6 +470,8 @@ async function logout() {
   authUser.value = null
   localStorage.removeItem('fusionpilot_access_token')
   localStorage.removeItem('fusionpilot_user')
+  activeView.value = 'workbench'
+  window.history.pushState({}, '', '/')
   authMessage.value = '已退出登录。'
 }
 
@@ -613,6 +723,25 @@ async function requestAgent<T>(url: string, options?: RequestInit): Promise<T> {
   }
 }
 
+function navigateTo(view: AgentView) {
+  activeView.value = view
+  const path = view === 'agent' ? '/agent' : '/'
+  window.history.pushState({}, '', path)
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function handlePopState() {
+  activeView.value = window.location.pathname === '/agent' ? 'agent' : 'workbench'
+}
+
+async function loadAgentModelStatus() {
+  try {
+    agentModelStatus.value = await requestAgent<AgentModelStatus>('/api/v1/agent/models')
+  } catch {
+    agentModelStatus.value = null
+  }
+}
+
 function resetAgentMessages() {
   agentMessage.value = ''
   agentError.value = ''
@@ -790,6 +919,7 @@ function resizeChart() {
 }
 
 onMounted(async () => {
+  window.addEventListener('popstate', handlePopState)
   window.addEventListener('resize', resizeChart)
   const storedToken = localStorage.getItem('fusionpilot_access_token')
   const storedUser = localStorage.getItem('fusionpilot_user')
@@ -797,6 +927,7 @@ onMounted(async () => {
     try {
       authToken.value = storedToken
       authUser.value = JSON.parse(storedUser) as AuthUser
+      void loadAgentModelStatus()
     } catch {
       localStorage.removeItem('fusionpilot_access_token')
       localStorage.removeItem('fusionpilot_user')
@@ -805,6 +936,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('popstate', handlePopState)
   window.removeEventListener('resize', resizeChart)
   chart?.dispose()
 })
@@ -824,10 +956,14 @@ onBeforeUnmount(() => {
         <span class="status-dot"></span><span>&#26412;&#22320;&#20223;&#30495;</span><span class="status-divider"></span><span>JAVA &#26680;&#24515; : 8080</span>
         <span class="status-divider"></span>
         <span v-if="authUser">{{ authUser.displayName || authUser.username }}</span>
+        <template v-if="authUser">
+          <button class="topbar-action" :class="{ active: activeView === 'workbench' }" @click="navigateTo('workbench')">&#23454;&#39564;&#24037;&#20316;&#21488;</button>
+          <button class="topbar-action" :class="{ active: activeView === 'agent' }" @click="navigateTo('agent')">AGENT &#21161;&#25163;</button>
+        </template>
         <button v-if="authUser" class="topbar-action" title="&#36864;&#20986;&#30331;&#24405;" @click="logout">&#36864;&#20986;</button>
         <template v-else>
-          <button class="topbar-action" @click="authMode = 'login'; authModalOpen = true">&#30331;&#24405;</button>
-          <button class="topbar-action accent" @click="authMode = 'register'; authModalOpen = true">&#27880;&#20876;</button>
+          <button class="topbar-action" @click="openAuth('login')">&#30331;&#24405;</button>
+          <button class="topbar-action accent" @click="openAuth('register')">&#27880;&#20876;</button>
         </template>
       </div>
     </header>
@@ -840,8 +976,8 @@ onBeforeUnmount(() => {
           <p class="landing-title">&#19968;&#20307;&#21270;&#38647;&#36798;&#19982;&#30005;&#23376;&#23545;&#25239;&#31995;&#32479;&#25968;&#23383;&#27169;&#22411;</p>
           <p class="landing-lede">&#23558;&#38647;&#36798;&#35266;&#27979;&#12289;&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;&#12289;&#36164;&#28304;&#35843;&#24230;&#19982; Agent &#23454;&#39564;&#21327;&#20316;&#32467;&#21512;&#21040;&#19968;&#20010;&#21487;&#22797;&#29616;&#30340;&#25968;&#23383;&#23454;&#39564;&#23460;&#12290;</p>
           <div class="landing-actions">
-            <button class="primary-button landing-primary" @click="authMode = 'login'; authModalOpen = true">&#36827;&#20837;&#23454;&#39564;&#23460; <span>&rarr;</span></button>
-            <button class="landing-link" @click="authMode = 'register'; authModalOpen = true">&#21019;&#24314;&#36134;&#21495;</button>
+            <button class="primary-button landing-primary" @click="openAuth('login')">&#36827;&#20837;&#23454;&#39564;&#23460; <span>&rarr;</span></button>
+            <button class="landing-link" @click="openAuth('register')">&#21019;&#24314;&#36134;&#21495;</button>
           </div>
           <div class="landing-facts">
             <div><strong>04</strong><span>&#26680;&#24515;&#27169;&#22359;</span></div>
@@ -868,7 +1004,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="intro-row">
+      <section v-if="!authUser || activeView === 'workbench'" class="intro-row">
         <div>
           <p class="eyebrow">&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;</p>
           <h1>&#35266;&#27979;&#12289;&#34701;&#21512;&#19982;&#20915;&#31574;</h1>
@@ -880,20 +1016,28 @@ onBeforeUnmount(() => {
       <div v-if="authModalOpen" class="auth-overlay" @click.self="authModalOpen = false">
         <section class="auth-modal panel">
           <div class="panel-heading">
-            <div><span class="panel-kicker">ACCOUNT ACCESS</span><h2>{{ authMode === 'login' ? '&#30331;&#24405; FusionPilot' : '&#27880;&#20876; FusionPilot' }}</h2></div>
+            <div><span class="panel-kicker">ACCOUNT ACCESS</span><h2>{{ authMode === 'login' ? '&#30331;&#24405; FusionPilot' : authMode === 'register' ? '&#27880;&#20876; FusionPilot' : authMode === 'forgot' ? '&#25214;&#22238;&#23494;&#30721;' : '&#37325;&#32622;&#23494;&#30721;' }}</h2></div>
             <button class="icon-button" title="&#20851;&#38381;" @click="authModalOpen = false">&times;</button>
           </div>
           <div class="auth-tabs">
-            <button :class="{ active: authMode === 'login' }" @click="authMode = 'login'; authError = ''">&#30331;&#24405;</button>
-            <button :class="{ active: authMode === 'register' }" @click="authMode = 'register'; authError = ''">&#27880;&#20876;</button>
+            <button :class="{ active: authMode === 'login' }" @click="openAuth('login')">&#30331;&#24405;</button>
+            <button :class="{ active: authMode === 'register' }" @click="openAuth('register')">&#27880;&#20876;</button>
           </div>
-          <form class="auth-form" @submit.prevent="submitAuth">
+          <form class="auth-form" @submit.prevent="authMode === 'forgot' ? submitForgot() : authMode === 'reset' ? submitReset() : submitAuth()">
             <label v-if="authMode === 'register'" class="field"><span>&#29992;&#25143;&#21517;</span><input v-model="authForm.username" required minlength="3" maxlength="50" autocomplete="username" /></label>
-            <label v-else class="field"><span>&#29992;&#25143;&#21517;&#25110;&#37038;&#31665;</span><input v-model="authForm.login" required autocomplete="username" /></label>
+            <label v-if="authMode !== 'register' && authMode !== 'reset'" class="field"><span>&#29992;&#25143;&#21517;&#25110;&#37038;&#31665;</span><input v-model="authForm.login" required autocomplete="username" /></label>
             <label v-if="authMode === 'register'" class="field"><span>&#37038;&#31665;</span><input v-model="authForm.email" required type="email" autocomplete="email" /></label>
             <label v-if="authMode === 'register'" class="field"><span>&#26174;&#31034;&#21517;&#31216;</span><input v-model="authForm.displayName" required maxlength="80" /></label>
-            <label class="field"><span>&#23494;&#30721;</span><input v-model="authForm.password" required minlength="8" type="password" autocomplete="current-password" /></label>
-            <button class="primary-button auth-submit" :disabled="authBusy" type="submit">{{ authBusy ? '&#25552;&#20132;&#20013;...' : authMode === 'login' ? '&#30331;&#24405;' : '&#21019;&#24314;&#36134;&#21495;' }}</button>
+            <label v-if="authMode === 'login' || authMode === 'register'" class="field"><span>&#23494;&#30721;</span><div class="password-shell"><input v-model="authForm.password" required minlength="8" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" /><button type="button" class="password-toggle" :class="{ 'is-visible': showPassword }" :title="showPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" :aria-label="showPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" @click="showPassword = !showPassword"></button></div></label>
+            <label v-if="authMode === 'reset'" class="field"><span>&#37325;&#32622;&#201令;&#29260;</span><input v-model="authForm.resetToken" required /></label>
+            <label v-if="authMode === 'reset'" class="field"><span>&#26032;&#23494;&#30721;</span><div class="password-shell"><input v-model="authForm.newPassword" required minlength="8" :type="showNewPassword ? 'text' : 'password'" /><button type="button" class="password-toggle" :class="{ 'is-visible': showNewPassword }" :title="showNewPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" :aria-label="showNewPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" @click="showNewPassword = !showNewPassword"></button></div></label>
+            <div v-if="authMode === 'login' || authMode === 'register' || authMode === 'forgot'" class="captcha-field">
+              <span>&#39564;&#35777;&#30721;</span><strong>{{ captcha?.question || '--' }}</strong>
+              <input v-model="captchaAnswer" required inputmode="numeric" autocomplete="off" />
+              <button type="button" class="ghost-button" @click="loadCaptcha">&#25442;&#19968;&#20010;</button>
+            </div>
+            <button v-if="authMode === 'login'" type="button" class="auth-help" @click="openAuth('forgot')">&#24536;&#35760;&#23494;&#30721;&#65311;</button>
+            <button class="primary-button auth-submit" :disabled="authBusy" type="submit">{{ authBusy ? '&#25552;&#20132;&#20013;...' : authMode === 'login' ? '&#30331;&#24405;' : authMode === 'register' ? '&#21019;&#24314;&#36134;&#21495;' : authMode === 'forgot' ? '&#21457;&#36865;&#37325;&#32622;&#35831;&#27714;' : '&#20445;&#23384;&#26032;&#23494;&#30721;' }}</button>
           </form>
           <p v-if="authMessage" class="auth-message">{{ authMessage }}</p>
           <p v-if="authError" class="auth-error">{{ authError }}</p>
@@ -1000,7 +1144,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
       </section>
-      <section v-if="authUser" class="panel agent-panel">
+      <section v-if="authUser && activeView === 'workbench'" class="panel agent-panel">
         <div class="panel-heading">
           <div><span class="panel-kicker">06 / AGENT</span><h2>&#23454;&#39564;&#21327;&#20316;&#21161;&#25163;</h2></div>
           <span class="policy-tag">{{ agentSession?.status ?? '&#26410;&#24320;&#22987;' }}</span>
@@ -1047,6 +1191,94 @@ onBeforeUnmount(() => {
           <div class="agent-evidence">
             <span v-for="item in agentResult.analysis.evidence" :key="item.metric" class="evidence-chip">{{ item.metric }}: {{ item.value }}</span>
           </div>
+        </div>
+      </section>
+      <section v-if="authUser && activeView === 'agent'" class="agent-page">
+        <div class="agent-page-hero">
+          <div>
+            <p class="eyebrow">FUSIONPILOT / RESEARCH COPILOT</p>
+            <h1>&#38647;&#36798;&#19982;&#30005;&#23376;&#23545;&#25239;&#21327;&#21516;&#21161;&#25163;</h1>
+            <p class="lede">&#25226;&#35266;&#27979;&#28304;&#12289;&#20449;&#24687;&#34701;&#21512;&#12289;&#36164;&#28304;&#35843;&#24230;&#21644;&#25239;&#24178;&#25200;&#25351;&#26631;&#20018;&#25104;&#19968;&#20010;&#21487;&#23457;&#38405;&#30340;&#23454;&#39564;&#38381;&#29615;&#12290; Agent &#21482;&#25552;&#20986;&#21644;&#35299;&#37322;&#65292;&#20223;&#30495;&#20107;&#23454;&#27704;&#36828;&#26469;&#33258; Java &#26680;&#24515;&#12290;</p>
+          </div>
+          <div class="agent-model-status">
+            <span class="panel-kicker">ACTIVE MODEL</span>
+            <strong>{{ agentModelStatus?.current.label ?? 'RULE-BASED AGENT' }}</strong>
+            <span>{{ agentModelStatus?.current.model || 'Local deterministic planner' }}</span>
+            <em>{{ agentModelStatus?.current.fallbackToRule ? 'RULE FALLBACK READY' : 'EXTERNAL MODEL ONLY' }}</em>
+          </div>
+        </div>
+        <div class="agent-page-grid">
+          <section class="panel agent-command-panel">
+            <div class="panel-heading">
+              <div><span class="panel-kicker">01 / MISSION BRIEF</span><h2>&#23454;&#39564;&#20219;&#21153;&#31616;&#25253;</h2></div>
+              <span class="policy-tag">{{ agentSession?.status ?? '&#24453;&#21019;&#24314;' }}</span>
+            </div>
+            <p class="agent-domain-note">&#20320;&#21487;&#20197;&#35201;&#27714; Agent &#35268;&#21010;&#38647;&#36798;&#35266;&#27979;&#12289;&#20809;&#30005;/&#32418;&#22806;&#35266;&#27979;&#12289;&#20808;&#39564;&#20449;&#24687;&#30340;&#34701;&#21512;&#26041;&#26696;&#65292;&#25110;&#22312;&#24178;&#25200;&#21644;&#36164;&#28304;&#21463;&#38480;&#26102;&#20248;&#21270;&#35843;&#24230;&#31574;&#30053;&#12290;</p>
+            <label class="field agent-goal">
+              <span>&#30740;&#31350;&#20219;&#21153;</span>
+              <textarea v-model="agentGoal" rows="7" placeholder="&#20363;&#22914;&#65306;&#22312;&#38647;&#36798;&#22122;&#22768;&#22686;&#22823;&#19988;&#20809;&#30005;&#35266;&#27979;&#32570;&#22833;&#26102;&#65292;&#27604;&#36739;&#20004;&#31181;&#35843;&#24230;&#31574;&#30053;&#23545;&#36319;&#36394;&#29575;&#21644;&#36164;&#28304;&#21033;&#29992;&#29575;&#30340;&#24433;&#21709;"></textarea>
+            </label>
+            <div class="agent-actions">
+              <button class="secondary-button" :disabled="agentBusy || !agentGoal.trim()" @click="createAgentSession">&#29983;&#25104;&#23454;&#39564;&#26041;&#26696;</button>
+              <button class="secondary-button" :disabled="agentBusy || !agentSession || agentSession.confirmed" @click="confirmAgentSession">&#23457;&#38405;&#21518;&#30830;&#35748;</button>
+            </div>
+            <div v-if="agentSession" class="agent-tool-row">
+              <select v-model="agentTool" :disabled="agentBusy || !agentSession.confirmed">
+                <option value="validate_experiment">&#26816;&#26597;&#20223;&#30495;&#37197;&#32622;</option>
+                <option value="run_simulation">&#25191;&#34892;&#38647;&#36798;&#20223;&#30495;</option>
+                <option value="calculate_metrics">&#25552;&#21462;&#25239;&#24178;&#25200;&#25351;&#26631;</option>
+                <option value="compare_scheduling_policies">&#27604;&#36739;&#36164;&#28304;&#35843;&#24230;</option>
+              </select>
+              <button class="primary-button" :disabled="agentBusy || !agentSession.confirmed" @click="executeAgentTool">&#25191;&#34892;&#24037;&#20855;</button>
+            </div>
+            <p v-if="agentMessage" class="agent-message">{{ agentMessage }}</p>
+            <p v-if="agentError" class="agent-error">{{ agentError }}</p>
+            <div class="agent-capability-grid">
+              <div><strong>01</strong><span>&#35266;&#27979;&#28304;</span><small>RADAR / EO-IR / PRIOR</small></div>
+              <div><strong>02</strong><span>&#20449;&#24687;&#34701;&#21512;</span><small>CONFIDENCE / PREDICTION</small></div>
+              <div><strong>03</strong><span>&#36164;&#28304;&#35843;&#24230;</span><small>ROUND ROBIN / PRIORITY</small></div>
+              <div><strong>04</strong><span>&#21453;&#24178;&#25200;&#35780;&#20272;</span><small>NOISE / MISSING / DELAY</small></div>
+            </div>
+          </section>
+          <section class="panel agent-plan-panel">
+            <div class="panel-heading">
+              <div><span class="panel-kicker">02 / PLAN REVIEW</span><h2>&#21487;&#23457;&#38405;&#30340;&#23454;&#39564;&#26041;&#26696;</h2></div>
+              <span v-if="agentSession" class="policy-tag">{{ agentSession.plan.planner || 'RULE' }}</span>
+            </div>
+            <div v-if="agentSession">
+              <div class="agent-plan-title">{{ agentSession.plan.title }}</div>
+              <div class="agent-plan-grid">
+                <div><span>&#22522;&#32447;</span><strong>{{ agentSession.plan.baselines.join(' / ') }}</strong></div>
+                <div><span>&#25351;&#26631;</span><strong>{{ agentSession.plan.metrics.length }} &#39033;</strong></div>
+                <div><span>&#27169;&#22411;</span><strong>{{ agentSession.plan.model || 'LOCAL RULES' }}</strong></div>
+              </div>
+              <ol class="agent-steps">
+                <li v-for="step in agentSession.plan.execution_steps" :key="step">{{ step }}</li>
+              </ol>
+              <button class="ghost-button trace-button" @click="refreshAgentTrace">&#21047;&#26032;&#36712;&#36857;</button>
+            </div>
+            <div v-else class="agent-empty">&#25552;&#20132;&#19968;&#20010;&#38647;&#36798;&#19982;&#30005;&#23376;&#23545;&#25239;&#23454;&#39564;&#20219;&#21153;&#65292;Agent &#20250;&#20808;&#35299;&#26512;&#35266;&#27979;&#21644;&#35843;&#24230;&#26465;&#20214;&#12290;</div>
+          </section>
+        </div>
+        <div class="agent-page-grid agent-lower-grid">
+          <section class="panel agent-trace-panel">
+            <div class="panel-heading compact"><div><span class="panel-kicker">03 / TOOL TRACE</span><h2>&#21327;&#21516;&#25191;&#34892;&#36712;&#36857;</h2></div><span class="step-counter">{{ agentSession?.events.length ?? 0 }} EVENTS</span></div>
+            <div v-if="agentSession?.events.length" class="agent-event-list">
+              <div v-for="event in agentSession.events" :key="event.event_id" class="agent-event-row">
+                <span class="event-mark"></span><div><strong>{{ event.event_type }}</strong><small>{{ event.created_at }}</small></div>
+              </div>
+            </div>
+            <div v-else class="muted-empty">&#31561;&#24453; Agent &#21019;&#24314;&#20219;&#21153;&#24182;&#35760;&#24405;&#35266;&#27979;&#12289;&#34701;&#21512;&#21644;&#35843;&#24230;&#24037;&#20855;&#35843;&#29992;&#12290;</div>
+          </section>
+          <section class="panel agent-evidence-panel">
+            <div class="panel-heading compact"><div><span class="panel-kicker">04 / EVIDENCE</span><h2>&#32467;&#26500;&#21270;&#35777;&#25454;</h2></div><span class="policy-tag">{{ agentResult ? '&#24050;&#36820;&#22238;' : '--' }}</span></div>
+            <div v-if="agentResult?.analysis" class="agent-analysis">
+              <p>{{ agentResult.analysis.summary }}</p>
+              <div class="agent-evidence"><span v-for="item in agentResult.analysis.evidence" :key="item.metric" class="evidence-chip">{{ item.metric }}: {{ item.value }}</span></div>
+              <ul class="agent-limitations"><li v-for="item in agentResult.analysis.limitations" :key="item">{{ item }}</li></ul>
+            </div>
+            <div v-else class="muted-empty">&#25191;&#34892;&#24037;&#20855;&#21518;&#65292;&#36825;&#37324;&#20250;&#23637;&#31034;&#36319;&#36394;&#29575;&#12289;&#20301;&#32622;&#35823;&#24046;&#12289;&#36164;&#28304;&#21033;&#29992;&#29575;&#21644;&#31574;&#30053;&#24046;&#24322;&#12290;</div>
+          </section>
         </div>
       </section>
     </main>

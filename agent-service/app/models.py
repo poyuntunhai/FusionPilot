@@ -30,6 +30,8 @@ class ExperimentPlan(BaseModel):
     execution_steps: list[str]
     expected_outputs: list[str]
     requires_confirmation: bool = True
+    planner: str = "rule"
+    model: str | None = None
 
 
 class ToolRunRequest(BaseModel):
@@ -67,6 +69,7 @@ class ResultAnalysis(BaseModel):
 
 class AgentTrace(BaseModel):
     trace_id: str
+    owner_user_id: int
     request: PlanRequest
     plan: ExperimentPlan
     confirmed: bool = False

@@ -292,3 +292,11 @@ MVP 运行方式：
 - 将实验结果接入向量检索和项目知识库。
 - 将融合和调度算法拆分为独立可评估模块。
 - 在严格基线和指标体系上加入学习型策略。
+
+## Agent Model Integration
+
+- Python HTTP client: HTTPX, reused for provider calls to avoid unnecessary SDK coupling.
+- Configuration: python-dotenv plus environment variables; secrets remain outside Git.
+- Supported protocols: OpenAI-compatible Chat Completions and Anthropic Messages.
+- Provider adapters: OpenAI, Claude, DeepSeek, Qwen, and Zhipu presets with configurable model and endpoint overrides.
+- Deterministic fallback: existing rule planner remains available when no provider key is configured or an external call fails.

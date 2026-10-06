@@ -238,3 +238,76 @@
 - Verified npm.cmd run build; Vite production build completed successfully. Vite reported only the existing large ECharts bundle warning.
 - The attached PDF was treated as a visual reference, not as a project instruction document. No paid or external asset dependency was added.
 - Next: user opens the site and verifies the visual direction, then commit the account and homepage milestone together.
+## Authentication Security Foundation Verification
+
+- Status: PASSED
+- Added one-time five-minute arithmetic captcha challenges for registration, login, and password-reset requests.
+- Added `fp_password_reset_token` with expiry, single-use marker, user foreign key, and token-hash uniqueness.
+- Added password-reset request and confirmation APIs; confirmation updates the BCrypt password and revokes all active sessions.
+- Added Bearer session lookup and active-user checks.
+- Added admin APIs for user listing, active/inactive status changes, and session revocation.
+- Verified incremental Java compilation with the local JDK and cached Maven dependencies.
+- Verified temporary MySQL runtime on port 8092: registration 200, login 200, invalid captcha 400, reset request 200, reset confirmation 200, unauthenticated admin 401, normal-user admin access 403, and admin access 200.
+- Updated Vue auth modal with captcha input and password-reset request/confirmation states; Vue type checking passed.
+- Development reset tokens are intentionally returned only because this is a local learning environment. Production email delivery and external captcha adapters remain next.
+- Next: rebuild the packaged backend and run browser-level auth verification, then add production delivery adapters if the user selects an email/captcha provider.
+## Password Visibility Control Verification
+
+- Status: PASSED
+- Added eye toggle controls to login/registration password and reset-password fields.
+- Password inputs remain masked by default and can be shown or hidden independently.
+- Added accessible title and aria-label states for the toggle buttons.
+- Verified Vue type checking and the production build after the change.
+## Simulation Route Protection Verification
+
+- Status: PASSED
+- Added active Bearer-session checks to simulation run, history, detail, result lookup, and strategy-comparison endpoints.
+- Verified without a token: all five protected routes return HTTP 401.
+- Verified after login with the local MySQL account: simulation run, history, detail, result lookup, and comparison all succeed.
+- Fixed incremental Java compilation compatibility by naming route parameters explicitly.
+- Fixed MySQL normalized-detail persistence to accept either a named `step_id` generated key or the JDBC generic generated key.
+- Runtime backend is listening on port 8080 from the current compiled classes; the Vue development server remains on port 5173.
+- Next: update the FastAPI-to-Java request boundary to forward the authenticated user token when Agent execution invokes protected simulation APIs.
+## Agent Token Forwarding Verification
+
+- Status: IMPLEMENTED; runtime integration test deferred.
+- FastAPI Java client now accepts an optional Authorization header for simulation and policy comparison calls.
+- Agent direct execution and confirmed session execution forward the browser bearer token to Java.
+- Python source compilation passed with `python -m compileall -q app tests`.
+- `pytest -q` could not collect because the current Python environment lacks the declared FastAPI dependency and package path setup; no test result is claimed.
+- Vue type checking passed after the backend route change.
+## Multi-Model Agent Gateway Verification
+
+- Status: PASSED
+- Installed `python-dotenv==1.0.1` into `agent-service/.venv`; existing FastAPI, HTTPX, Pydantic, Uvicorn, and Pytest dependencies were already present.
+- Added provider presets for OpenAI, Claude, DeepSeek, Qwen, and Zhipu.
+- Added OpenAI-compatible and Anthropic Messages HTTP request handling with configurable endpoint, model, timeout, and temperature.
+- Connected `/api/v1/agent/plan` to the model planner while preserving the deterministic rule fallback.
+- Added `GET /api/v1/agent/models` for non-secret provider capability metadata.
+- Added structured-plan parsing and provider tests.
+- Verified `agent-service` test suite: 8 passed, 1 dependency deprecation warning.
+- Verified Python source compilation and `git diff --check`.
+- No external model API key was used during verification; real provider calls remain opt-in through local `.env`.
+- Next: protect Agent routes with the existing Java session token and bind Agent traces to the authenticated user.
+## Agent Research Cockpit Verification
+
+- Status: PASSED
+- Added authenticated `/agent` subpage navigation with browser history support and return navigation to `/`.
+- Added a domain-oriented Agent cockpit for radar/EO-IR/prior observation, fusion, scheduling, and interference evaluation workflows.
+- Added model status display, mission brief, plan review, tool trace, and structured evidence areas.
+- Connected the existing Agent session and execution actions to the new page without duplicating Java simulation logic.
+- Verified `/agent` through the running Vite server: HTTP 200 and FusionPilot app shell present.
+- Verified Vue type checking and production build; Vite build completed with the existing large ECharts chunk warning.
+- Verified Agent tests: 9 passed, 1 dependency deprecation warning.
+- Next: protect all Agent routes with Java bearer-session validation and persist Agent sessions/traces by user ID.## Agent Authorization and Trace Ownership Verification
+
+- Status: PASSED
+- Added Java `GET /api/v1/auth/me` backed by `UserService.authenticateBearer()`.
+- Protected all non-health Agent routes with a FastAPI dependency that delegates session validation to Java.
+- Added `owner_user_id` to Agent traces and enforced ownership for trace read, confirmation, and execution.
+- Preserved bearer forwarding from Agent tools to protected Java simulation and comparison routes.
+- Fixed account registration generated-key handling by requesting only the `user_id` key, preventing H2 multi-key registration failures.
+- Verified Agent tests: 11 passed, 1 dependency deprecation warning.
+- Verified live Java behavior: no-token `/auth/me` returns 401; registration/login and token-backed `/auth/me` return the authenticated profile.
+- Verified live FastAPI behavior: health is available, no-token Agent metadata returns 401, token-backed metadata and session creation succeed with the authenticated user ID.
+- Next: replace the in-memory Agent trace store with a database-backed trace/session repository when Agent history persistence is prioritized.

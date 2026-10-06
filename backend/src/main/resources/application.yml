@@ -15,3 +15,5 @@ server:
 
 fusionpilot:
   version: 0.1.0-SNAPSHOT
+  auth:
+    return-development-reset-token: true

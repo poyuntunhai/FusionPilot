@@ -2,6 +2,10 @@ package com.fusionpilot.backend.api;
 
 import com.fusionpilot.backend.account.UserAlreadyExistsException;
 import com.fusionpilot.backend.account.InvalidCredentialsException;
+import com.fusionpilot.backend.account.InvalidCaptchaException;
+import com.fusionpilot.backend.account.InvalidPasswordResetTokenException;
+import com.fusionpilot.backend.account.UnauthorizedException;
+import com.fusionpilot.backend.account.ForbiddenException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,6 +16,29 @@ import java.util.List;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(InvalidCaptchaException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCaptcha() {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_CAPTCHA", "Captcha is invalid or expired", List.of()));
+    }
+
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPasswordResetToken() {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_RESET_TOKEN", "Password reset token is invalid or expired", List.of()));
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorized() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication is required", List.of()));
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("FORBIDDEN", "Administrator permission is required", List.of()));
+    }
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleInvalidCredentials() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

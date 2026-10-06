@@ -2,9 +2,8 @@ package com.fusionpilot.backend.account;
 
 import jakarta.validation.constraints.NotBlank;
 
-public record LoginRequest(
+public record PasswordResetRequest(
         @NotBlank String login,
-        @NotBlank String password,
         @NotBlank String captchaId,
         @NotBlank String captchaAnswer
 ) {

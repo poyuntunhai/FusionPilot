@@ -8,9 +8,14 @@ class AgentTraceStore:
     def __init__(self) -> None:
         self._traces: dict[str, AgentTrace] = {}
 
-    def create(self, request: PlanRequest, plan: ExperimentPlan) -> AgentTrace:
+    def create(self, request: PlanRequest, plan: ExperimentPlan, owner_user_id: int) -> AgentTrace:
         trace_id = str(uuid4())
-        trace = AgentTrace(trace_id=trace_id, request=request, plan=plan)
+        trace = AgentTrace(
+            trace_id=trace_id,
+            owner_user_id=owner_user_id,
+            request=request,
+            plan=plan,
+        )
         self._traces[trace_id] = trace
         return trace
 

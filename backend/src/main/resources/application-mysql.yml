@@ -7,3 +7,7 @@ spring:
   sql:
     init:
       mode: always
+
+fusionpilot:
+  auth:
+    return-development-reset-token: true

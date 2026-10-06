@@ -15,6 +15,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Repository
@@ -55,7 +56,11 @@ public class JdbcSimulationDetailRepository {
             ps.setInt(2, timeStep);
             return ps;
         }, keyHolder);
-        Object stepId = Objects.requireNonNull(keyHolder.getKeys()).get("step_id");
+        Map<String, Object> keys = keyHolder.getKeys();
+        Object stepId = keys == null ? null : keys.get("step_id");
+        if (stepId == null) {
+            stepId = keyHolder.getKey();
+        }
         return ((Number) Objects.requireNonNull(stepId)).longValue();
     }
 

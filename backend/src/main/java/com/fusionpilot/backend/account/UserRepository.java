@@ -7,6 +7,9 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -37,7 +40,7 @@ public class UserRepository {
                         (username, email, password_hash, display_name, role, status)
                     values (?, ?, ?, ?, 'USER', 'ACTIVE')
                     """,
-                    Statement.RETURN_GENERATED_KEYS
+                    new String[]{"user_id"}
             );
             statement.setString(1, username);
             statement.setString(2, email);
@@ -79,5 +82,45 @@ public class UserRepository {
                 "update fp_user set last_login_at = current_timestamp where user_id = ?",
                 userId
         );
+    }
+
+    public void updatePassword(long userId, String passwordHash) {
+        jdbcTemplate.update(
+                "update fp_user set password_hash = ?, updated_at = current_timestamp where user_id = ?",
+                passwordHash,
+                userId
+        );
+    }
+
+    public List<AdminUserSummary> findAllUsers() {
+        return jdbcTemplate.query(
+                """
+                select user_id, username, email, display_name, role, status, last_login_at, created_at
+                from fp_user
+                order by created_at desc
+                """,
+                (resultSet, rowNum) -> new AdminUserSummary(
+                        resultSet.getLong("user_id"),
+                        resultSet.getString("username"),
+                        resultSet.getString("email"),
+                        resultSet.getString("display_name"),
+                        resultSet.getString("role"),
+                        resultSet.getString("status"),
+                        toInstant(resultSet.getTimestamp("last_login_at")),
+                        toInstant(resultSet.getTimestamp("created_at"))
+                )
+        );
+    }
+
+    public void updateStatus(long userId, String status) {
+        jdbcTemplate.update(
+                "update fp_user set status = ?, updated_at = current_timestamp where user_id = ?",
+                status,
+                userId
+        );
+    }
+
+    private Instant toInstant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
     }
 }

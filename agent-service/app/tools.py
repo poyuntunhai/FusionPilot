@@ -36,13 +36,18 @@ def list_tool_definitions() -> list[ToolDefinition]:
     return TOOL_DEFINITIONS
 
 
-async def call_tool(tool_name: str, config: dict[str, Any], last_result: dict[str, Any] | None) -> dict[str, Any]:
+async def call_tool(
+    tool_name: str,
+    config: dict[str, Any],
+    last_result: dict[str, Any] | None,
+    authorization: str | None = None,
+) -> dict[str, Any]:
     if tool_name == "validate_experiment":
         return await validate_experiment(config)
     if tool_name == "run_simulation":
-        return await run_simulation(config)
+        return await run_simulation(config, authorization)
     if tool_name == "compare_scheduling_policies":
-        return await compare_scheduling_policies(config)
+        return await compare_scheduling_policies(config, authorization)
     if tool_name == "calculate_metrics":
         return calculate_metrics(last_result)
     raise ValueError(f"Unknown tool: {tool_name}")
