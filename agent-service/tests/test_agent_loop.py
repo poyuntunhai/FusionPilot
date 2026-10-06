@@ -16,6 +16,10 @@ def set_authenticated_user(user_id: int = 1) -> None:
     }
 
 
+async def fake_persist_trace(trace: dict, authorization: str) -> None:
+    return None
+
+
 def test_tool_registry_contains_core_tools():
     names = {tool.name for tool in list_tool_definitions()}
     assert names == {
@@ -55,6 +59,7 @@ def test_execute_requires_confirmation(monkeypatch):
         return {"targetCount": 1, "simulationSteps": 1}
 
     monkeypatch.setattr("app.agent_service.get_default_config", fake_default_config)
+    monkeypatch.setattr("app.main.save_agent_trace", fake_persist_trace)
     set_authenticated_user()
     client = TestClient(app)
     try:
@@ -94,6 +99,7 @@ def test_session_uses_model_planner_boundary(monkeypatch):
 
     monkeypatch.setattr("app.agent_service.get_default_config", fake_default_config)
     monkeypatch.setattr("app.agent_service.build_plan_with_model", fake_model_plan)
+    monkeypatch.setattr("app.main.save_agent_trace", fake_persist_trace)
     set_authenticated_user()
     client = TestClient(app)
     try:
@@ -125,6 +131,7 @@ def test_trace_is_hidden_from_other_users(monkeypatch):
         return {"targetCount": 1, "simulationSteps": 1}
 
     monkeypatch.setattr("app.agent_service.get_default_config", fake_default_config)
+    monkeypatch.setattr("app.main.save_agent_trace", fake_persist_trace)
     set_authenticated_user(user_id=1)
     client = TestClient(app)
     try:

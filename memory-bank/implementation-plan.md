@@ -312,4 +312,14 @@
 2. Protect all non-health FastAPI Agent routes with Java bearer validation.
 3. Bind Agent traces to the authenticated user and prevent cross-user read, confirm, and execute operations.
 4. Preserve bearer forwarding when Agent tools call protected Java simulation APIs.
-5. Verify Python tests, Java authentication behavior, and live FastAPI-to-Java route behavior.
+5. Verify Python tests, Java authentication behavior, and live FastAPI-to-Java route behavior.## UI Separation and Password Policy Milestone
+
+1. Remove the legacy Agent panel from the simulation workbench.
+2. Prevent workbench dashboard content from rendering on `/agent`.
+3. Add live password rule feedback and enforce the policy in Java registration and reset validation.
+4. Verify Vue type checking, production build, backend compilation, and Agent tests.## Persistent Agent Session Milestone
+
+1. Add the Java-owned Agent session table and user foreign-key ownership.
+2. Add authenticated Java create, update, and read endpoints for trace snapshots.
+3. Synchronize FastAPI Agent lifecycle changes and hydrate traces after restart.
+4. Verify create, Java readback, Agent restart recovery, user scoping, Python tests, and Java compilation.

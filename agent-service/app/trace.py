@@ -22,6 +22,10 @@ class AgentTraceStore:
     def get(self, trace_id: str) -> AgentTrace | None:
         return self._traces.get(trace_id)
 
+    def restore(self, trace: AgentTrace) -> AgentTrace:
+        self._traces[trace.trace_id] = trace
+        return trace
+
     def append(self, trace_id: str, event_type: str, payload: dict) -> TraceEvent:
         trace = self._traces[trace_id]
         event = TraceEvent(

@@ -7,7 +7,14 @@ from .agent_service import (
     execute_session_tool,
 )
 from .auth import require_agent_user
-from .java_client import JavaBackendError, get_default_config, run_simulation
+from .java_client import (
+    JavaBackendError,
+    get_agent_trace,
+    get_default_config,
+    run_simulation,
+    save_agent_trace,
+    update_agent_trace,
+)
 from .model_gateway import ModelGatewayError, current_provider, provider_catalog
 from .model_planner import build_plan_with_model
 from .models import (
@@ -20,6 +27,7 @@ from .models import (
     ToolRunRequest,
 )
 from .tools import list_tool_definitions
+from .trace import trace_store
 
 app = FastAPI(
     title="FusionPilot Agent Service",
@@ -98,7 +106,9 @@ async def create_agent_session(
     auth: dict = Depends(require_agent_user),
 ) -> AgentTrace:
     try:
-        return await create_session(request, auth["user_id"])
+        trace = await create_session(request, auth["user_id"])
+        await save_agent_trace(trace.model_dump(mode="json"), auth["authorization"])
+        return trace
     except JavaBackendError as exc:
         raise _java_error(exc) from exc
 
@@ -109,7 +119,12 @@ async def confirm_agent_session(
     auth: dict = Depends(require_agent_user),
 ) -> ConfirmResponse:
     try:
-        return confirm_session(trace_id, auth["user_id"])
+        await _hydrate_trace(trace_id, auth)
+        response = confirm_session(trace_id, auth["user_id"])
+        trace = trace_store.get(trace_id)
+        if trace is not None:
+            await update_agent_trace(trace.model_dump(mode="json"), auth["authorization"])
+        return response
     except AgentWorkflowError as exc:
         raise _workflow_error(exc) from exc
 
@@ -121,12 +136,17 @@ async def execute_agent_tool(
     auth: dict = Depends(require_agent_user),
 ) -> ToolCallResult:
     try:
-        return await execute_session_tool(
+        await _hydrate_trace(trace_id, auth)
+        response = await execute_session_tool(
             trace_id,
             request,
             auth["authorization"],
             auth["user_id"],
         )
+        trace = trace_store.get(trace_id)
+        if trace is not None:
+            await update_agent_trace(trace.model_dump(mode="json"), auth["authorization"])
+        return response
     except JavaBackendError as exc:
         raise _java_error(exc) from exc
     except AgentWorkflowError as exc:
@@ -138,14 +158,37 @@ async def get_agent_session(
     trace_id: str,
     auth: dict = Depends(require_agent_user),
 ) -> AgentTrace:
-    from .trace import trace_store
+    local_trace = trace_store.get(trace_id)
+    if local_trace is not None:
+        if local_trace.owner_user_id != auth["user_id"]:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "TRACE_NOT_FOUND", "message": "Agent trace not found."},
+            )
+        return local_trace
+    persisted = await get_agent_trace(trace_id, auth["authorization"])
+    if persisted is not None:
+        trace = AgentTrace.model_validate(persisted)
+        trace_store.restore(trace)
+        return trace
+    raise HTTPException(
+        status_code=404,
+        detail={"code": "TRACE_NOT_FOUND", "message": "Agent trace not found."},
+    )
 
+
+async def _hydrate_trace(trace_id: str, auth: dict) -> AgentTrace:
     trace = trace_store.get(trace_id)
-    if trace is None or trace.owner_user_id != auth["user_id"]:
+    if trace is not None and trace.owner_user_id == auth["user_id"]:
+        return trace
+    persisted = await get_agent_trace(trace_id, auth["authorization"])
+    if persisted is None:
         raise HTTPException(
             status_code=404,
             detail={"code": "TRACE_NOT_FOUND", "message": "Agent trace not found."},
         )
+    trace = AgentTrace.model_validate(persisted)
+    trace_store.restore(trace)
     return trace
 
 

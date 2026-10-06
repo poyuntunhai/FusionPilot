@@ -310,4 +310,21 @@
 - Verified Agent tests: 11 passed, 1 dependency deprecation warning.
 - Verified live Java behavior: no-token `/auth/me` returns 401; registration/login and token-backed `/auth/me` return the authenticated profile.
 - Verified live FastAPI behavior: health is available, no-token Agent metadata returns 401, token-backed metadata and session creation succeed with the authenticated user ID.
-- Next: replace the in-memory Agent trace store with a database-backed trace/session repository when Agent history persistence is prioritized.
+- Next: replace the in-memory Agent trace store with a database-backed trace/session repository when Agent history persistence is prioritized.## UI Separation and Password Policy Verification
+
+- Status: PASSED
+- Removed the legacy embedded Agent assistant from the authenticated experiment workbench.
+- Fixed the workbench dashboard condition so `/agent` no longer renders the experiment console above the Agent cockpit.
+- Added live password feedback in the auth modal.
+- Enforced passwords as 10-100 characters with at least two of letters, digits, and symbols for registration and password reset.
+- Verified Vue type checking, Vite production build, Java DTO compilation, Agent tests (`11 passed`), and representative password cases.
+- Next: visually inspect the two separated views in the browser, then continue with persistent Agent session storage.## Persistent Agent Session Verification
+
+- Status: PASSED
+- Added Java-owned `fp_agent_session` persistence with user ownership and JSON snapshot fields.
+- Added authenticated Java Agent session create, update, and read endpoints.
+- FastAPI now synchronizes trace snapshots after creation, confirmation, and tool execution and hydrates missing traces from Java.
+- Verified Python tests: `11 passed`, with one existing dependency deprecation warning.
+- Verified Java Agent persistence classes compile against the project runtime dependencies.
+- Live verification created trace `9bf56d51-99bd-4606-ad9b-6eb0955223fe` for user `1`, confirmed Java readback, restarted Agent, and recovered the trace with 3 events and `AWAITING_CONFIRMATION` status.
+- Next: add user-visible Agent history and database-backed tool-call/event reporting, then return to trajectory playback.

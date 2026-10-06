@@ -157,3 +157,22 @@ create table if not exists fp_password_reset_token (
     index idx_password_reset_expiry (expires_at),
     index idx_password_reset_used (used_at)
 );
+
+create table if not exists fp_agent_session (
+    trace_id varchar(64) primary key,
+    user_id bigint not null,
+    goal varchar(1000) not null,
+    status varchar(40) not null,
+    confirmed boolean not null,
+    plan_json longtext not null,
+    events_json longtext not null,
+    last_result_json longtext null,
+    analysis_json longtext null,
+    created_at timestamp not null default current_timestamp,
+    updated_at timestamp not null default current_timestamp,
+    constraint fk_agent_session_user
+        foreign key (user_id) references fp_user(user_id)
+        on delete cascade,
+    index idx_agent_session_user_updated (user_id, updated_at),
+    index idx_agent_session_status (status)
+);

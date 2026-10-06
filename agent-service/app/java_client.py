@@ -56,6 +56,37 @@ async def get_current_user(authorization: str) -> dict:
     return await _request("GET", "/api/v1/auth/me", authorization=authorization)
 
 
+async def save_agent_trace(trace: dict, authorization: str) -> None:
+    await _request(
+        "POST",
+        "/api/v1/agent/sessions",
+        trace,
+        authorization=authorization,
+    )
+
+
+async def update_agent_trace(trace: dict, authorization: str) -> None:
+    await _request(
+        "PUT",
+        f"/api/v1/agent/sessions/{trace['trace_id']}",
+        trace,
+        authorization=authorization,
+    )
+
+
+async def get_agent_trace(trace_id: str, authorization: str) -> dict | None:
+    try:
+        return await _request(
+            "GET",
+            f"/api/v1/agent/sessions/{trace_id}",
+            authorization=authorization,
+        )
+    except JavaBackendError as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+
+
 async def validate_experiment(config: dict) -> dict:
     return await _request("POST", "/api/v1/experiments/validate", config)
 

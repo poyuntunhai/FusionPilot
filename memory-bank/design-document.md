@@ -383,4 +383,13 @@ The first account milestone uses a durable MySQL `fp_user` table. It stores a un
 - Every non-health Agent endpoint requires the browser's Java-issued bearer session.
 - FastAPI validates the token through Java `/api/v1/auth/me` before returning model capabilities, creating plans, or accessing tools and traces.
 - A trace is owned by the authenticated `userId`; another account receives a not-found response rather than trace details.
-- Direct simulation execution still passes the same token to Java, preserving one authorization source and making revocation effective at the simulation boundary.
+- Direct simulation execution still passes the same token to Java, preserving one authorization source and making revocation effective at the simulation boundary.## UI Information Architecture and Password Policy
+
+- The simulation workbench and Agent cockpit are separate authenticated views. The workbench focuses on configuration, execution, trajectory, metrics, and scheduling; the Agent view focuses on collaboration and evidence.
+- The Agent cockpit must not duplicate the workbench dashboard or show the legacy embedded assistant panel.
+- Account passwords must be at least 10 characters and contain at least two of letters, numbers, and symbols. The same rule applies when resetting a password.## Agent Session Persistence
+
+- Agent sessions must survive an Agent service restart and remain scoped to the authenticated user.
+- Java is the persistence owner. FastAPI synchronizes structured trace snapshots through authenticated internal HTTP endpoints and may cache active traces in memory.
+- A persisted snapshot includes the user goal, generated plan, confirmation state, workflow status, trace events, tool result, and structured analysis.
+- A missing or cross-user trace is returned as not found; persistence must not become an authorization bypass.

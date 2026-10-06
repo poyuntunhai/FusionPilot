@@ -232,4 +232,14 @@
 - Agent health remains public for service probes; planning, model metadata, tool metadata, configuration, execution, and trace routes require an active Java session.
 - `AgentTrace.owner_user_id` binds each in-memory trace to the authenticated Java user. Confirm, execute, and read operations return `TRACE_NOT_FOUND` for another user's trace.
 - The Agent forwards the validated bearer token to Java simulation calls so the Java domain boundary remains authoritative for simulation access.
-- `UserController.me` exposes the minimal authenticated profile needed by the Agent boundary. `UserRepository.insert` requests only `user_id` as the generated key for H2/MySQL compatibility.
+- `UserController.me` exposes the minimal authenticated profile needed by the Agent boundary. `UserRepository.insert` requests only `user_id` as the generated key for H2/MySQL compatibility.## UI Separation and Password Policy
+
+- The authenticated simulation workbench is rendered only when `activeView === 'workbench'`; the Agent route no longer renders the workbench dashboard or the legacy embedded Agent panel.
+- The `/agent` view is a dedicated Agent research cockpit containing mission brief, plan review, tool trace, and structured evidence.
+- Registration and password reset use one shared policy: 10-100 characters and at least two of letters, digits, and symbols. The Vue form gives live feedback, while Java Bean Validation enforces the rule at the API boundary.## Persistent Agent Session Storage
+
+- Java now owns `fp_agent_session` persistence for Agent trace snapshots, keyed by `user_id` and protected by the existing bearer-session boundary.
+- `backend/src/main/java/com/fusionpilot/backend/agent/AgentSessionRepository.java` stores plan, events, status, confirmation state, last result, and structured analysis as JSON while keeping ownership relational.
+- `AgentSessionController` exposes authenticated create, update, and user-scoped read endpoints for FastAPI; FastAPI never connects to MySQL directly.
+- FastAPI keeps a memory cache for active workflows, synchronizes snapshots to Java after creation, confirmation, and tool execution, and hydrates a trace from Java after service restart.
+- The schema uses `events_json` in the session snapshot for atomic workflow recovery; the existing normalized event/tool tables remain available for a later event-level query/reporting milestone.
