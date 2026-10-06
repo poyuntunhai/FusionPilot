@@ -100,6 +100,8 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
 .password-toggle:not(.is-visible)::after { opacity: .55; }
 .password-toggle:hover::before, .password-toggle.is-visible::before { border-color: var(--cyan); }
 .password-toggle:hover::after, .password-toggle.is-visible::after { background: var(--cyan); }
+.password-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.password-hint.valid { color: #8ce5ae; }
 .auth-submit { min-height: 35px; margin-top: 16px; }
 .captcha-field { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin-top: 16px; color: var(--muted); font-size: 11px; }
 .captcha-field strong { color: var(--cyan); font-size: 14px; font-weight: 650; }
@@ -299,6 +301,12 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
 .agent-page-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 18px; }
 .agent-command-panel, .agent-plan-panel, .agent-trace-panel, .agent-evidence-panel { padding: 22px; min-width: 0; }
 .agent-domain-note { max-width: 760px; margin: 18px 0 0; color: var(--muted-strong); font-size: 12px; line-height: 1.7; }
+.agent-model-picker { display: grid; grid-template-columns: minmax(160px, .9fr) minmax(180px, 1fr) 150px; gap: 10px; align-items: end; margin-top: 18px; }
+.agent-model-picker .field { margin-top: 0; }
+.model-state { min-height: 42px; border: 1px solid #263b55; padding: 8px 10px; background: var(--panel-deep); }
+.model-state span { display: block; color: #ffd596; font-size: 9px; letter-spacing: .08em; }
+.model-state strong { display: block; overflow: hidden; margin-top: 6px; color: var(--muted-strong); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.model-state.ready span { color: #8ce5ae; }
 .agent-capability-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 22px; }
 .agent-capability-grid div { min-width: 0; padding: 10px; border: 1px solid #203a55; background: var(--panel-deep); }
 .agent-capability-grid strong { display: block; color: var(--cyan); font-size: 15px; }
@@ -319,5 +327,6 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
   .agent-plan-grid { grid-template-columns: 1fr 1fr 1fr; }
   .agent-page-hero, .agent-page-grid, .agent-lower-grid { grid-template-columns: 1fr; }
   .agent-capability-grid { grid-template-columns: 1fr 1fr; }
+  .agent-model-picker { grid-template-columns: 1fr; }
   .topbar-status { flex-wrap: wrap; justify-content: flex-end; }
 }

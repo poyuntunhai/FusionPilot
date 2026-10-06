@@ -327,4 +327,34 @@
 - Verified Python tests: `11 passed`, with one existing dependency deprecation warning.
 - Verified Java Agent persistence classes compile against the project runtime dependencies.
 - Live verification created trace `9bf56d51-99bd-4606-ad9b-6eb0955223fe` for user `1`, confirmed Java readback, restarted Agent, and recovered the trace with 3 events and `AWAITING_CONFIRMATION` status.
-- Next: add user-visible Agent history and database-backed tool-call/event reporting, then return to trajectory playback.
+- Next: add user-visible Agent history and database-backed tool-call/event reporting, then return to trajectory playback.## RAG and MCP Requirement Capture
+
+- Status: RECORDED
+- Captured future requirement for a RAG layer over project docs, domain notes, metrics, reports, and user-owned Agent history.
+- Captured future requirement for a FusionPilot MCP server exposing Java-backed simulation and evidence tools.
+- Noted that a local vector database can be used first; external APIs are mainly needed for hosted embeddings, reranking, or managed vector storage.
+- Current Agent remains custom-tool based and does not yet implement RAG or MCP.
+- Next implementation after current Agent persistence/history work can choose either local RAG foundation or MCP server foundation.## User-Selectable Agent Model Verification
+
+- Status: PASSED
+- Added per-task `model_provider` and `model_name` fields to Agent planning requests.
+- Added provider/model resolution in the FastAPI model gateway without exposing API keys to Vue.
+- Added Agent cockpit controls for selecting rule/OpenAI/Claude/DeepSeek/Qwen/Zhipu and overriding model names.
+- Unconfigured selected providers fall back to the rule planner and preserve requested provider/model metadata.
+- Verified Agent tests: `12 passed`, with one existing dependency deprecation warning.
+- Verified Python source compilation, Vue type checking, Vite production build, and `git diff --check`.## Agent Model Dropdown Verification
+
+- Status: PASSED
+- Added provider-specific model option lists for OpenAI, Claude, DeepSeek, Qwen, and Zhipu.
+- `/api/v1/agent/models` now returns `modelOptions` for each provider.
+- Replaced the Agent page model-name text input with a provider-specific dropdown.
+- Switching providers selects that provider's default model; rule mode keeps the local planner selection disabled.
+- Verified Agent tests: `12 passed`, Python compilation, Vue type checking, Vite production build, and `git diff --check`.## Frontend Usability Recovery Verification
+
+- Status: PASSED
+- Fixed stale browser-token recovery by validating stored tokens through Java `GET /api/v1/auth/me` before treating the user as logged in.
+- Expired or invalid stored sessions are now cleared and the login modal is shown instead of leaving the UI in a broken authenticated-looking state.
+- Successful login and stored-session recovery now preload the default experiment scene and refresh Agent model status.
+- Experiment run, policy comparison, and Agent plan creation now automatically load the default scene when needed.
+- Verified the 5174 Vite proxy path for captcha, registration, login, Agent model metadata, Java simulation run, Agent session creation, confirmation, and tool execution.
+- Verified Vue production build with `npm.cmd run build`; Vite still reports only the existing large ECharts chunk warning.

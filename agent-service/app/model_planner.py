@@ -15,7 +15,7 @@ The Java backend is the source of truth for all simulation results. The plan may
 
 async def build_plan_with_model(request: PlanRequest, default_config: dict[str, Any]) -> ExperimentPlan:
     fallback = build_plan(request, default_config)
-    provider = current_provider()
+    provider = current_provider(request.model_provider, request.model_name)
     if provider["provider"] == "rule":
         return fallback
 
@@ -37,7 +37,7 @@ async def build_plan_with_model(request: PlanRequest, default_config: dict[str, 
         },
     ]
     try:
-        content = await complete(messages)
+        content = await complete(messages, request.model_provider, request.model_name)
         plan = ExperimentPlan.model_validate(parse_json_object(content))
         return plan.model_copy(
             update={
@@ -49,7 +49,12 @@ async def build_plan_with_model(request: PlanRequest, default_config: dict[str, 
         )
     except (ModelGatewayError, json.JSONDecodeError, ValueError):
         if provider["fallbackToRule"]:
-            return fallback
+            return fallback.model_copy(
+                update={
+                    "planner": "rule-fallback",
+                    "model": f"{provider['provider']}:{provider['model']}",
+                }
+            )
         raise
 
 

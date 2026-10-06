@@ -198,6 +198,7 @@ type AgentModelStatus = {
     label: string
     protocol: string
     defaultModel: string
+    modelOptions: string[]
     configured: boolean
   }>
 }
@@ -244,18 +245,49 @@ const showNewPassword = ref(false)
 const authForm = ref({ login: '', username: '', email: '', password: '', displayName: '', resetToken: '', newPassword: '' })
 const activeView = ref<AgentView>(window.location.pathname === '/agent' ? 'agent' : 'workbench')
 const agentModelStatus = ref<AgentModelStatus | null>(null)
+const selectedAgentProvider = ref('rule')
+const selectedAgentModel = ref('')
 let chart: echarts.ECharts | null = null
 let progressTimer: number | undefined
 const REQUEST_TIMEOUT_MS = 30_000
 const RUN_WATCHDOG_MS = 32_000
+const PASSWORD_PATTERN = /^(?=.{10,100}$)(?:(?=.*[A-Za-z])(?=.*\d)|(?=.*[A-Za-z])(?=.*[^A-Za-z\d])|(?=.*\d)(?=.*[^A-Za-z\d])).*$/
 
 const activeMetrics = computed(() => simulation.value?.metrics ?? null)
 const currentStep = computed(() => simulation.value?.steps[activeStep.value] ?? null)
 const visibleSteps = computed(() => simulation.value?.steps.slice(-12).reverse() ?? [])
-const canRun = computed(() => sceneLoaded.value && !loading.value && !loadingConfig.value)
+const canRun = computed(() => !loading.value && !loadingConfig.value)
+const selectedProviderInfo = computed(() => {
+  if (selectedAgentProvider.value === 'rule') return null
+  return agentModelStatus.value?.providers.find((item) => item.provider === selectedAgentProvider.value) ?? null
+})
+const selectedProviderLabel = computed(() => selectedProviderInfo.value?.label ?? 'Rule-based Agent')
+const selectedModelOptions = computed(() => {
+  if (selectedAgentProvider.value === 'rule') return ['Local deterministic planner']
+  const options = selectedProviderInfo.value?.modelOptions ?? []
+  const fallback = selectedProviderInfo.value?.defaultModel
+  return options.length ? options : fallback ? [fallback] : []
+})
+const selectedModelName = computed(() => {
+  if (selectedAgentProvider.value === 'rule') return 'Local deterministic planner'
+  return selectedAgentModel.value || selectedProviderInfo.value?.defaultModel || ''
+})
 
 function formatNumber(value: number | undefined, digits = 2) {
   return value === undefined ? '--' : value.toFixed(digits)
+}
+
+function passwordMeetsRules(password: string) {
+  const categoryCount = [/[A-Za-z]/.test(password), /\d/.test(password), /[^A-Za-z\d]/.test(password)]
+    .filter(Boolean).length
+  return password.length >= 10 && categoryCount >= 2
+}
+
+function passwordHint(password: string) {
+  if (!password) return '至少 10 位，数字、字母、符号至少满足两类'
+  return passwordMeetsRules(password)
+    ? '密码强度符合要求'
+    : '还需满足：至少 10 位，数字、字母、符号至少满足两类'
 }
 
 function sourceLabel(type: string) {
@@ -349,6 +381,9 @@ async function submitAuth() {
   authMessage.value = ''
   try {
     if (authMode.value === 'register') {
+      if (!passwordMeetsRules(authForm.value.password)) {
+        throw new Error('密码至少 10 位，且数字、字母、符号至少满足两类。')
+      }
       await request<AuthUser>('/api/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify({
@@ -380,6 +415,7 @@ async function submitAuth() {
       localStorage.setItem('fusionpilot_access_token', result.accessToken)
       localStorage.setItem('fusionpilot_user', JSON.stringify(result.user))
       void loadAgentModelStatus()
+      void loadDefaultConfig()
       authForm.value.password = ''
       authMessage.value = '登录成功。'
     }
@@ -439,6 +475,9 @@ async function submitReset() {
   authBusy.value = true
   authError.value = ''
   try {
+    if (!passwordMeetsRules(authForm.value.newPassword)) {
+      throw new Error('密码至少 10 位，且数字、字母、符号至少满足两类。')
+    }
     await request('/api/v1/auth/password-reset/confirm', {
       method: 'POST',
       body: JSON.stringify({
@@ -537,7 +576,7 @@ async function refreshSimulationDetailInBackground(result: SimulationResult, tok
     progressText.value = '\u4eff\u771f\u5df2\u5b8c\u6210\uff0c\u660e\u7ec6\u56de\u653e\u63a5\u53e3\u6682\u672a\u8fd4\u56de'
   }
 }
-async function loadDefaultConfig() {
+async function loadDefaultConfig(): Promise<boolean> {
   loadingConfig.value = true
   errorMessage.value = ''
   try {
@@ -549,16 +588,23 @@ async function loadDefaultConfig() {
     activeStep.value = 0
     chart?.dispose()
     chart = null
+    return true
   } catch (error) {
     errorMessage.value = '&#26080;&#27861;&#36830;&#25509; Java &#21518;&#31471;&#65306;' + String(error)
+    return false
   } finally {
     loadingConfig.value = false
   }
 }
 
+async function ensureSceneLoaded(): Promise<boolean> {
+  if (sceneLoaded.value) return true
+  return loadDefaultConfig()
+}
+
 async function runSimulation() {
-  if (!sceneLoaded.value) {
-    errorMessage.value = '\u8bf7\u5148\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f\u3002'
+  if (!(await ensureSceneLoaded())) {
+    errorMessage.value = '\u65e0\u6cd5\u81ea\u52a8\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f\uff0c\u8bf7\u68c0\u67e5 Java \u540e\u7aef\u3002'
     return
   }
   const token = activeRunToken.value + 1
@@ -622,8 +668,8 @@ async function runSimulation() {
 }
 
 async function comparePolicies() {
-  if (!sceneLoaded.value) {
-    errorMessage.value = '\u8bf7\u5148\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f\u3002'
+  if (!(await ensureSceneLoaded())) {
+    errorMessage.value = '\u65e0\u6cd5\u81ea\u52a8\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f\uff0c\u8bf7\u68c0\u67e5 Java \u540e\u7aef\u3002'
     return
   }
   const token = activeRunToken.value + 1
@@ -728,15 +774,33 @@ function navigateTo(view: AgentView) {
   const path = view === 'agent' ? '/agent' : '/'
   window.history.pushState({}, '', path)
   window.scrollTo({ top: 0, behavior: 'smooth' })
+  if (authUser.value) {
+    if (view === 'workbench') void ensureSceneLoaded()
+    if (view === 'agent') void loadAgentModelStatus()
+  }
 }
 
 function handlePopState() {
   activeView.value = window.location.pathname === '/agent' ? 'agent' : 'workbench'
 }
 
+function handleAgentProviderChange() {
+  if (selectedAgentProvider.value === 'rule') {
+    selectedAgentModel.value = ''
+    return
+  }
+  selectedAgentModel.value = selectedProviderInfo.value?.defaultModel ?? selectedModelOptions.value[0] ?? ''
+}
+
 async function loadAgentModelStatus() {
   try {
     agentModelStatus.value = await requestAgent<AgentModelStatus>('/api/v1/agent/models')
+    selectedAgentProvider.value = agentModelStatus.value.current.provider
+    if (selectedAgentProvider.value === 'rule') {
+      selectedAgentModel.value = ''
+    } else {
+      selectedAgentModel.value = agentModelStatus.value.current.model ?? selectedProviderInfo.value?.defaultModel ?? ''
+    }
   } catch {
     agentModelStatus.value = null
   }
@@ -751,6 +815,9 @@ async function createAgentSession() {
   resetAgentMessages()
   agentBusy.value = true
   try {
+    if (!(await ensureSceneLoaded())) {
+      throw new Error('\u65e0\u6cd5\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f')
+    }
     agentSession.value = await requestAgent<AgentTrace>('/api/v1/agent/sessions', {
       method: 'POST',
       body: JSON.stringify({
@@ -758,7 +825,9 @@ async function createAgentSession() {
         target_count: config.value.targetCount,
         simulation_steps: config.value.simulationSteps,
         scheduling_policy: config.value.schedulingPolicy,
-        compare_policies: agentGoal.value.includes('\u6bd4\u8f83') || agentGoal.value.toLowerCase().includes('compare')
+        compare_policies: agentGoal.value.includes('\u6bd4\u8f83') || agentGoal.value.toLowerCase().includes('compare'),
+        model_provider: selectedAgentProvider.value,
+        model_name: selectedAgentProvider.value === 'rule' ? null : selectedAgentModel.value.trim() || null
       })
     })
     agentResult.value = null
@@ -922,15 +991,21 @@ onMounted(async () => {
   window.addEventListener('popstate', handlePopState)
   window.addEventListener('resize', resizeChart)
   const storedToken = localStorage.getItem('fusionpilot_access_token')
-  const storedUser = localStorage.getItem('fusionpilot_user')
-  if (storedToken && storedUser) {
+  if (storedToken) {
     try {
       authToken.value = storedToken
-      authUser.value = JSON.parse(storedUser) as AuthUser
+      authUser.value = await request<AuthUser>('/api/v1/auth/me')
+      localStorage.setItem('fusionpilot_user', JSON.stringify(authUser.value))
       void loadAgentModelStatus()
+      void loadDefaultConfig()
     } catch {
+      authToken.value = ''
+      authUser.value = null
       localStorage.removeItem('fusionpilot_access_token')
       localStorage.removeItem('fusionpilot_user')
+      authMessage.value = '\u767b\u5f55\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002'
+      authModalOpen.value = true
+      void loadCaptcha()
     }
   }
 })
@@ -1028,9 +1103,9 @@ onBeforeUnmount(() => {
             <label v-if="authMode !== 'register' && authMode !== 'reset'" class="field"><span>&#29992;&#25143;&#21517;&#25110;&#37038;&#31665;</span><input v-model="authForm.login" required autocomplete="username" /></label>
             <label v-if="authMode === 'register'" class="field"><span>&#37038;&#31665;</span><input v-model="authForm.email" required type="email" autocomplete="email" /></label>
             <label v-if="authMode === 'register'" class="field"><span>&#26174;&#31034;&#21517;&#31216;</span><input v-model="authForm.displayName" required maxlength="80" /></label>
-            <label v-if="authMode === 'login' || authMode === 'register'" class="field"><span>&#23494;&#30721;</span><div class="password-shell"><input v-model="authForm.password" required minlength="8" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" /><button type="button" class="password-toggle" :class="{ 'is-visible': showPassword }" :title="showPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" :aria-label="showPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" @click="showPassword = !showPassword"></button></div></label>
+            <label v-if="authMode === 'login' || authMode === 'register'" class="field"><span>&#23494;&#30721;</span><div class="password-shell"><input v-model="authForm.password" required :minlength="authMode === 'register' ? 10 : undefined" :pattern="authMode === 'register' ? PASSWORD_PATTERN.source : undefined" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" /><button type="button" class="password-toggle" :class="{ 'is-visible': showPassword }" :title="showPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" :aria-label="showPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" @click="showPassword = !showPassword"></button></div><small v-if="authMode === 'register'" class="password-hint" :class="{ valid: passwordMeetsRules(authForm.password) }">{{ passwordHint(authForm.password) }}</small></label>
             <label v-if="authMode === 'reset'" class="field"><span>&#37325;&#32622;&#201令;&#29260;</span><input v-model="authForm.resetToken" required /></label>
-            <label v-if="authMode === 'reset'" class="field"><span>&#26032;&#23494;&#30721;</span><div class="password-shell"><input v-model="authForm.newPassword" required minlength="8" :type="showNewPassword ? 'text' : 'password'" /><button type="button" class="password-toggle" :class="{ 'is-visible': showNewPassword }" :title="showNewPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" :aria-label="showNewPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" @click="showNewPassword = !showNewPassword"></button></div></label>
+            <label v-if="authMode === 'reset'" class="field"><span>&#26032;&#23494;&#30721;</span><div class="password-shell"><input v-model="authForm.newPassword" required minlength="10" :pattern="PASSWORD_PATTERN.source" :type="showNewPassword ? 'text' : 'password'" /><button type="button" class="password-toggle" :class="{ 'is-visible': showNewPassword }" :title="showNewPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" :aria-label="showNewPassword ? '&#38544;&#34255;&#23494;&#30721;' : '&#26174;&#31034;&#23494;&#30721;'" @click="showNewPassword = !showNewPassword"></button></div><small class="password-hint" :class="{ valid: passwordMeetsRules(authForm.newPassword) }">{{ passwordHint(authForm.newPassword) }}</small></label>
             <div v-if="authMode === 'login' || authMode === 'register' || authMode === 'forgot'" class="captcha-field">
               <span>&#39564;&#35777;&#30721;</span><strong>{{ captcha?.question || '--' }}</strong>
               <input v-model="captchaAnswer" required inputmode="numeric" autocomplete="off" />
@@ -1049,7 +1124,7 @@ onBeforeUnmount(() => {
         <button class="icon-button" title="&#20851;&#38381;&#25552;&#31034;" @click="errorMessage = ''">&times;</button>
       </div>
 
-      <section v-if="authUser" class="dashboard-grid">
+      <section v-if="authUser && activeView === 'workbench'" class="dashboard-grid">
         <aside class="panel config-panel">
           <div class="panel-heading">
             <div><span class="panel-kicker">01 / &#22330;&#26223;</span><h2>&#23454;&#39564;&#37197;&#32622;</h2></div>
@@ -1144,55 +1219,6 @@ onBeforeUnmount(() => {
           </div>
         </section>
       </section>
-      <section v-if="authUser && activeView === 'workbench'" class="panel agent-panel">
-        <div class="panel-heading">
-          <div><span class="panel-kicker">06 / AGENT</span><h2>&#23454;&#39564;&#21327;&#20316;&#21161;&#25163;</h2></div>
-          <span class="policy-tag">{{ agentSession?.status ?? '&#26410;&#24320;&#22987;' }}</span>
-        </div>
-        <div class="agent-layout">
-          <div class="agent-compose">
-            <label class="field agent-goal">
-              <span>&#23454;&#39564;&#30446;&#26631;</span>
-              <textarea v-model="agentGoal" rows="4" placeholder="&#25551;&#36848;&#20320;&#24819;&#27604;&#36739;&#30340;&#23454;&#39564;"></textarea>
-            </label>
-            <div class="agent-actions">
-              <button class="secondary-button" :disabled="agentBusy || !agentGoal.trim()" @click="createAgentSession">&#29983;&#25104;&#35745;&#21010;</button>
-              <button class="secondary-button" :disabled="agentBusy || !agentSession || agentSession.confirmed" @click="confirmAgentSession">&#30830;&#35748;&#35745;&#21010;</button>
-            </div>
-            <div v-if="agentSession" class="agent-tool-row">
-              <select v-model="agentTool" :disabled="agentBusy || !agentSession.confirmed">
-                <option value="validate_experiment">&#26657;&#39564;&#23454;&#39564;&#37197;&#32622;</option>
-                <option value="run_simulation">&#36816;&#34892;&#20223;&#30495;</option>
-                <option value="calculate_metrics">&#35745;&#31639;&#25351;&#26631;&#25688;&#35201;</option>
-                <option value="compare_scheduling_policies">&#23545;&#27604;&#35843;&#24230;&#31574;&#30053;</option>
-              </select>
-              <button class="primary-button" :disabled="agentBusy || !agentSession.confirmed" @click="executeAgentTool">&#25191;&#34892;&#24037;&#20855;</button>
-            </div>
-            <p v-if="agentMessage" class="agent-message">{{ agentMessage }}</p>
-            <p v-if="agentError" class="agent-error">{{ agentError }}</p>
-          </div>
-          <div class="agent-plan" v-if="agentSession">
-            <div class="agent-plan-title">{{ agentSession.plan.title }}</div>
-            <div class="agent-plan-grid">
-              <div><span>&#22522;&#32447;</span><strong>{{ agentSession.plan.baselines.join(' / ') }}</strong></div>
-              <div><span>&#25351;&#26631;</span><strong>{{ agentSession.plan.metrics.length }} &#39033;</strong></div>
-              <div><span>&#20107;&#20214;</span><strong>{{ agentSession.events.length }}</strong></div>
-            </div>
-            <ol class="agent-steps">
-              <li v-for="step in agentSession.plan.execution_steps" :key="step">{{ step }}</li>
-            </ol>
-            <button class="ghost-button trace-button" @click="refreshAgentTrace">&#21047;&#26032;&#36712;&#36857;</button>
-          </div>
-          <div v-else class="agent-empty">&#36755;&#20837;&#23454;&#39564;&#30446;&#26631;&#65292;&#35753; Agent &#29983;&#25104;&#21487;&#23457;&#38405;&#30340;&#35745;&#21010;&#12290;</div>
-        </div>
-        <div v-if="agentResult?.analysis" class="agent-analysis">
-          <div class="subsection-title">&#32467;&#26524;&#35299;&#37322;</div>
-          <p>{{ agentResult.analysis.summary }}</p>
-          <div class="agent-evidence">
-            <span v-for="item in agentResult.analysis.evidence" :key="item.metric" class="evidence-chip">{{ item.metric }}: {{ item.value }}</span>
-          </div>
-        </div>
-      </section>
       <section v-if="authUser && activeView === 'agent'" class="agent-page">
         <div class="agent-page-hero">
           <div>
@@ -1202,9 +1228,9 @@ onBeforeUnmount(() => {
           </div>
           <div class="agent-model-status">
             <span class="panel-kicker">ACTIVE MODEL</span>
-            <strong>{{ agentModelStatus?.current.label ?? 'RULE-BASED AGENT' }}</strong>
-            <span>{{ agentModelStatus?.current.model || 'Local deterministic planner' }}</span>
-            <em>{{ agentModelStatus?.current.fallbackToRule ? 'RULE FALLBACK READY' : 'EXTERNAL MODEL ONLY' }}</em>
+            <strong>{{ selectedProviderLabel }}</strong>
+            <span>{{ selectedModelName }}</span>
+            <em>{{ selectedProviderInfo?.configured || selectedAgentProvider === 'rule' ? 'READY' : 'UNCONFIGURED / RULE FALLBACK' }}</em>
           </div>
         </div>
         <div class="agent-page-grid">
@@ -1214,6 +1240,25 @@ onBeforeUnmount(() => {
               <span class="policy-tag">{{ agentSession?.status ?? '&#24453;&#21019;&#24314;' }}</span>
             </div>
             <p class="agent-domain-note">&#20320;&#21487;&#20197;&#35201;&#27714; Agent &#35268;&#21010;&#38647;&#36798;&#35266;&#27979;&#12289;&#20809;&#30005;/&#32418;&#22806;&#35266;&#27979;&#12289;&#20808;&#39564;&#20449;&#24687;&#30340;&#34701;&#21512;&#26041;&#26696;&#65292;&#25110;&#22312;&#24178;&#25200;&#21644;&#36164;&#28304;&#21463;&#38480;&#26102;&#20248;&#21270;&#35843;&#24230;&#31574;&#30053;&#12290;</p>
+            <div class="agent-model-picker">
+              <label class="field">
+                <span>&#27169;&#22411;&#25552;&#20379;&#26041;</span>
+                <select v-model="selectedAgentProvider" @change="handleAgentProviderChange">
+                  <option value="rule">&#26412;&#22320;&#35268;&#21017;</option>
+                  <option v-for="provider in agentModelStatus?.providers ?? []" :key="provider.provider" :value="provider.provider">{{ provider.label }}</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>&#27169;&#22411;&#21517;&#31216;</span>
+                <select v-model="selectedAgentModel" :disabled="selectedAgentProvider === 'rule'">
+                  <option v-for="model in selectedModelOptions" :key="model" :value="selectedAgentProvider === 'rule' ? '' : model">{{ model }}</option>
+                </select>
+              </label>
+              <div class="model-state" :class="{ ready: selectedProviderInfo?.configured || selectedAgentProvider === 'rule' }">
+                <span>{{ selectedAgentProvider === 'rule' ? 'LOCAL' : selectedProviderInfo?.configured ? 'API READY' : 'NEEDS API KEY' }}</span>
+                <strong>{{ selectedAgentProvider === 'rule' ? '&#35268;&#21017;&#27169;&#24335;' : selectedProviderInfo?.protocol ?? '--' }}</strong>
+              </div>
+            </div>
             <label class="field agent-goal">
               <span>&#30740;&#31350;&#20219;&#21153;</span>
               <textarea v-model="agentGoal" rows="7" placeholder="&#20363;&#22914;&#65306;&#22312;&#38647;&#36798;&#22122;&#22768;&#22686;&#22823;&#19988;&#20809;&#30005;&#35266;&#27979;&#32570;&#22833;&#26102;&#65292;&#27604;&#36739;&#20004;&#31181;&#35843;&#24230;&#31574;&#30053;&#23545;&#36319;&#36394;&#29575;&#21644;&#36164;&#28304;&#21033;&#29992;&#29575;&#30340;&#24433;&#21709;"></textarea>

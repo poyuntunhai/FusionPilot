@@ -18,6 +18,8 @@ class PlanRequest(BaseModel):
     simulation_steps: int | None = Field(default=None, ge=1, le=10000)
     scheduling_policy: SchedulingPolicy | None = None
     compare_policies: bool = False
+    model_provider: str | None = Field(default=None, max_length=40)
+    model_name: str | None = Field(default=None, max_length=120)
 
 
 class ExperimentPlan(BaseModel):

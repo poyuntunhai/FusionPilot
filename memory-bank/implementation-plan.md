@@ -322,4 +322,23 @@
 1. Add the Java-owned Agent session table and user foreign-key ownership.
 2. Add authenticated Java create, update, and read endpoints for trace snapshots.
 3. Synchronize FastAPI Agent lifecycle changes and hydrate traces after restart.
-4. Verify create, Java readback, Agent restart recovery, user scoping, Python tests, and Java compilation.
+4. Verify create, Java readback, Agent restart recovery, user scoping, Python tests, and Java compilation.## RAG and MCP Future Milestone
+
+1. Define knowledge-source types and ingestion rules for project docs, metric definitions, reports, and user Agent history.
+2. Add a local-first vector-store adapter, initially Chroma or Qdrant, with provider-pluggable embeddings.
+3. Add a retrieval API that returns cited snippets and source metadata without treating retrieval as simulation truth.
+4. Inject retrieved context into the model planner and result explainer while preserving Java as the source of experiment facts.
+5. Add a FusionPilot MCP server that exposes Java-backed tools: validate experiment, run simulation, compare policies, get simulation detail, get Agent history, and retrieve evidence.
+6. Migrate FastAPI Agent tool execution from the custom registry toward MCP while keeping backward compatibility during transition.
+7. Verify auth isolation, retrieval quality, provider fallback, and traceability of every Agent claim to retrieved knowledge or structured simulation data.## User-Selectable Agent Model Milestone
+
+1. Extend the Agent plan request with optional provider and model-name fields.
+2. Let the model gateway resolve provider/model per task while keeping secrets server-side.
+3. Add Agent cockpit controls for provider selection, model-name override, and provider readiness.
+4. Preserve deterministic fallback for unconfigured external providers.
+5. Verify FastAPI tests, Vue type checking, production build, and source checks.## Agent Model Dropdown Milestone
+
+1. Add provider-specific model preset lists to FastAPI model metadata.
+2. Render model names as a dropdown tied to the selected provider.
+3. Reset the model selection to provider defaults when the provider changes.
+4. Verify Agent tests, Python compilation, Vue type checking, production build, and source checks.

@@ -392,4 +392,27 @@ The first account milestone uses a durable MySQL `fp_user` table. It stores a un
 - Agent sessions must survive an Agent service restart and remain scoped to the authenticated user.
 - Java is the persistence owner. FastAPI synchronizes structured trace snapshots through authenticated internal HTTP endpoints and may cache active traces in memory.
 - A persisted snapshot includes the user goal, generated plan, confirmation state, workflow status, trace events, tool result, and structured analysis.
-- A missing or cross-user trace is returned as not found; persistence must not become an authorization bypass.
+- A missing or cross-user trace is returned as not found; persistence must not become an authorization bypass.## RAG and MCP Roadmap Requirement
+
+- FusionPilot Agent should evolve from rule/model planning plus custom tools into a knowledge-grounded research assistant.
+- RAG is required as a future capability for retrieving project documentation, radar/fusion/scheduling domain notes, metric definitions, experiment reports, and user-owned historical Agent traces before generating plans or explanations.
+- The RAG layer must distinguish retrieved knowledge from simulation facts. Retrieved documents can guide planning and explanation, but Java simulation outputs remain the source of truth for experiment results.
+- The first RAG milestone may use a local vector database such as Chroma or Qdrant. A cloud vector database is optional, not required for the MVP learning path.
+- External APIs may be needed for hosted embeddings, reranking, or managed vector storage. Candidate embedding providers include OpenAI, Qwen/Tongyi, Zhipu, or local embedding models.
+- MCP is required as a future standard tool boundary. FusionPilot should expose simulation and evidence tools through an MCP server instead of only the current custom FastAPI tool registry.
+- Initial MCP tools should include experiment validation, simulation execution, policy comparison, normalized simulation-detail lookup, Agent history lookup, and report/evidence retrieval.
+- MCP and RAG must preserve the current security boundary: Java owns authentication, authorization, user data, and simulation facts; FastAPI orchestrates Agent workflows and model calls.## Agent Model Selection UX
+
+- Authenticated Agent users can choose the planner provider before creating an Agent session.
+- The UI must list local rule mode plus available external providers: OpenAI, Claude, DeepSeek, Qwen, and Zhipu.
+- Users may override the model name for a task, but provider credentials remain server-side `.env` configuration and must not be collected in Vue.
+- If a selected external provider is not configured, the Agent may fall back to local rule mode and must make the fallback visible in the plan metadata.## Agent Model Dropdown UX
+
+- The Agent model selector must provide two dropdowns: provider and model name.
+- Model options are provider-specific presets returned by FastAPI, not hard-coded only in the Vue template.
+- Users should not need to manually type common model names. Provider API credentials remain server-side configuration.## Authenticated Usability Requirement
+
+- The product must not present an authenticated workbench or Agent cockpit from local browser cache alone. Stored sessions must be revalidated through the Java backend before protected controls are treated as usable.
+- The experiment workbench should support a direct run flow: if no scene is loaded, the UI should load the Java default experiment config automatically before submitting simulation or comparison requests.
+- The Agent cockpit should generate plans against the same prepared experiment config used by the workbench, so Agent recommendations remain traceable to structured Java simulation inputs.
+- When a session is invalid or expired, the UI should clear stale local state and ask the user to log in again instead of leaving buttons visible but failing silently.

@@ -242,4 +242,26 @@
 - `backend/src/main/java/com/fusionpilot/backend/agent/AgentSessionRepository.java` stores plan, events, status, confirmation state, last result, and structured analysis as JSON while keeping ownership relational.
 - `AgentSessionController` exposes authenticated create, update, and user-scoped read endpoints for FastAPI; FastAPI never connects to MySQL directly.
 - FastAPI keeps a memory cache for active workflows, synchronizes snapshots to Java after creation, confirmation, and tool execution, and hydrates a trace from Java after service restart.
-- The schema uses `events_json` in the session snapshot for atomic workflow recovery; the existing normalized event/tool tables remain available for a later event-level query/reporting milestone.
+- The schema uses `events_json` in the session snapshot for atomic workflow recovery; the existing normalized event/tool tables remain available for a later event-level query/reporting milestone.## Planned RAG and MCP Architecture
+
+- Planned RAG components: document ingestion, chunking, embedding generation, vector storage, retrieval, optional reranking, and prompt-context assembly in FastAPI.
+- Planned knowledge sources: `memory-bank/`, project docs, schema/design notes, simulation reports, metric definitions, and user-owned Agent/session history.
+- Vector storage can start local-first with Chroma or Qdrant. Hosted vector storage remains optional and should be isolated behind a repository/interface.
+- Embedding generation should be provider-pluggable, matching the existing multi-model gateway style. API keys must remain in local `.env` files and never be exposed to Vue or committed.
+- Planned MCP boundary: a FusionPilot MCP server exposing Java-backed domain tools and Agent-history resources. The current `agent-service/app/tools.py` is a custom interim tool registry, not MCP.
+- Java remains the authority for authenticated data access and simulation facts. RAG retrieval and MCP tool calls must not bypass Java ownership checks.## User-Selectable Agent Model
+
+- `PlanRequest` now accepts optional `model_provider` and `model_name` fields from the Agent cockpit.
+- `model_gateway.py` can resolve a requested provider/model for one Agent task while still reading API credentials only from local environment variables.
+- The Vue Agent cockpit exposes a provider selector, model-name input, and readiness indicator. API keys are never entered or displayed in the browser.
+- Unconfigured external providers fall back to the deterministic rule planner when fallback is enabled, and the generated plan records the requested provider/model as fallback metadata.## Agent Model Preset Lists
+
+- `ProviderPreset` now includes `model_options` for each external provider. `/api/v1/agent/models` returns these options as `modelOptions` with provider metadata.
+- The Agent cockpit renders model names as a provider-specific dropdown instead of a free-text input.
+- Switching the provider resets the selected model to that provider's default model. Rule mode keeps the model selector disabled and uses the local deterministic planner.## Frontend Session and Scene Readiness
+
+- Vue no longer trusts local storage alone for authenticated startup. A stored bearer token must be accepted by Java `GET /api/v1/auth/me` before the app restores the user profile.
+- Invalid stored sessions are cleared client-side and routed back to the login modal, preventing the workbench and Agent cockpit from showing unusable authenticated controls.
+- Login and valid session recovery preload Java's default experiment config and refresh FastAPI Agent model metadata.
+- Workbench run/compare actions and Agent plan creation call the shared scene-readiness guard, so the Java default scenario is loaded before domain actions are submitted.
+- Java remains the authority for session validity and simulation facts; Vue only coordinates user-facing readiness and never grants access by itself.
