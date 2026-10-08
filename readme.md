@@ -11,6 +11,8 @@ Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视
 [![Agent tests](https://img.shields.io/badge/Agent%20tests-208%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
+> **小白第一次 vibe 的产物，正在准备部署上线中，欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！**
+
 ![首页](docs/images/landing.png)
 
 ---
