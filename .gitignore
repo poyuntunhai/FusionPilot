@@ -7,7 +7,6 @@
 
 # Java
 backend/target/
-backend/.mvn/wrapper/maven-wrapper.jar
 .m2/
 .tools/
 
@@ -29,3 +28,16 @@ data/
 *.sqlite
 *.sqlite3
 *.log
+runtime*.log
+
+# fpx CLI state: holds an access token plus the working experiment configuration
+.fpx/
+
+# Private process notes: architecture/progress/plan logs and the product requirements doc.
+# Kept on the author's machine on purpose; not part of the published repository.
+memory-bank/
+PRD.md
+
+# Local agent tooling state (helper memory, local skills, caches)
+.workbuddy/
+.agents/

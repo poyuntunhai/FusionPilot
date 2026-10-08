@@ -1,0 +1,25 @@
+# Line endings are decided by the repository, not by each developer's local
+# core.autocrlf setting. Without this, someone on Windows with autocrlf=false
+# can commit CRLF, and the next person to clone on macOS or Linux gets
+# "env: 'sh\r': No such file or directory" from a script that looks fine in the
+# diff. Files not listed below default to text with native line endings.
+* text=auto
+
+# Shell scripts must stay LF everywhere. mvnw is the documented way to start
+# the backend, and tools/fpx is the local control CLI for the three services.
+mvnw text eol=lf
+*.sh text eol=lf
+tools/fpx text eol=lf
+
+# Windows entry points genuinely want CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets: never diff or convert these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.jar binary

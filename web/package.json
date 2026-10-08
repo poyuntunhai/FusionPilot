@@ -2,10 +2,13 @@
   "name": "fusionpilot-web",
   "private": true,
   "version": "0.1.0",
+  "description": "FusionPilot web console: simulation workbench and agent chat (Vue 3 + TypeScript + Vite)",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build --configLoader runner",
+    "typecheck": "vue-tsc -b",
+    "build": "vue-tsc -b && vite build --configLoader runner",
     "preview": "vite preview"
   },
   "dependencies": {
