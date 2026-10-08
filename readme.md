@@ -106,9 +106,12 @@ cd backend
 默认用内存 H2，**零配置即可跑通**。要用 MySQL：
 
 ```bash
-mysql -u root -p < ../docs/mysql/init.sql          # 建库建用户
+# 1) 先把 init.sql 里的 CHANGE_ME 改成你自己的口令，然后建库建用户
+mysql -u root -p < ../docs/mysql/init.sql
 mysql -u root -p fusionpilot < ../docs/mysql/schema-relational.sql
-# 然后带上 mysql profile 启动：
+# 2) 把口令写进环境变量（与 init.sql 里的一致），再带 mysql profile 启动：
+#    Windows:             set FUSIONPILOT_DB_PASSWORD=你的口令
+#    Git Bash/macOS/Linux: export FUSIONPILOT_DB_PASSWORD='你的口令'
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=mysql
 ```
 
@@ -217,11 +220,9 @@ python tests/verify_multi_turn_end_to_end.py
 - **CORS 白名单**，不是 `*`。
 - `.env` 已被 `.gitignore` 忽略，只有 `.env.example` 入库。
 
-> ⚠️ **`backend/src/main/resources/application-mysql.yml` 与 `docs/mysql/init.sql` 里带有一个仅用于本地开发的 MySQL 口令默认值。** 请只把它当作本机开发默认值，**部署前务必改成强口令并从环境变量读取**：
+> ⚠️ **MySQL 口令不写死在代码里。** `application-mysql.yml` 从环境变量 `FUSIONPILOT_DB_PASSWORD` 读取；`docs/mysql/init.sql` 里的建库口令是 `CHANGE_ME` 占位，建库时改成你自己的：
 >
 > ```bash
-> # 1) 去掉 yml 里的默认值，改为 ${FUSIONPILOT_DB_PASSWORD}
-> # 2) 在本机设置环境变量（示例）
 > setx FUSIONPILOT_DB_PASSWORD "你的强口令"        # Windows
 > export FUSIONPILOT_DB_PASSWORD='...'             # macOS/Linux
 > ```

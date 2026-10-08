@@ -2,7 +2,7 @@ spring:
   datasource:
     url: ${FUSIONPILOT_DB_URL:jdbc:mysql://127.0.0.1:3306/fusionpilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${FUSIONPILOT_DB_USERNAME:fusionpilot}
-    password: ${FUSIONPILOT_DB_PASSWORD:fusionpilot123}
+    password: ${FUSIONPILOT_DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   sql:
     init:

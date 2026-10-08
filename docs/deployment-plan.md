@@ -16,7 +16,7 @@
 
 关键注意点（部署时容易踩）：
 1. 后端默认读环境变量 `SERVER__PORT`，会覆盖 `--server.port`；上线时要么清掉这个变量，要么显式 `--server.port=8080`。
-2. 数据库凭据现在写死在 `application-mysql.yml`（`fusionpilot / fusionpilot123`），上线**必须改**。
+2. 数据库口令已从环境变量 `FUSIONPILOT_DB_PASSWORD` 读取（`application-mysql.yml` 不再写死默认值），`init.sql` 里是 `CHANGE_ME` 占位；上线务必设置强口令。
 3. 前端 API 通过 Vite 代理转发，生产环境要由 Nginx 承担同样的代理职责。
 4. 用户上传的 API key 走 `X-Model-Api-Key` 请求头，**不落库**；生产环境必须上 HTTPS，否则明文过网。
 
@@ -247,8 +247,8 @@ sudo certbot --nginx -d your-domain.com
 
 ## 六、上线前安全加固清单（逐项打勾）
 
-- [ ] 数据库密码改成强密码，不再用 `fusionpilot123`
-- [ ] 后端 `application-mysql.yml` 里的凭据改为从环境变量读（`SPRING_DATASOURCE_PASSWORD`）
+- [ ] 设置 `FUSIONPILOT_DB_PASSWORD` 为强口令（`init.sql` 里是 `CHANGE_ME` 占位，本地沿用旧口令需显式设置）
+- [x] `application-mysql.yml` 已改为从环境变量 `FUSIONPILOT_DB_PASSWORD` 读取
 - [ ] Java / Agent / MySQL 只监听 127.0.0.1，不对公网开放端口
 - [ ] Nginx 配好 HTTPS（API key 走加密通道）
 - [ ] 生产环境关掉 `--reload`（Agent 的 uvicorn 热重载只用于开发）
