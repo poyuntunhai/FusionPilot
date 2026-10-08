@@ -1,6 +1,7 @@
 package com.fusionpilot.backend.account;
 
 import com.fusionpilot.backend.api.ApiResponse;
+import com.fusionpilot.backend.simulation.SimulationCancellationService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,10 +16,16 @@ public class UserController {
 
     private final UserService userService;
     private final CaptchaService captchaService;
+    private final SimulationCancellationService cancellationService;
 
-    public UserController(UserService userService, CaptchaService captchaService) {
+    public UserController(
+            UserService userService,
+            CaptchaService captchaService,
+            SimulationCancellationService cancellationService
+    ) {
         this.userService = userService;
         this.captchaService = captchaService;
+        this.cancellationService = cancellationService;
     }
 
     @GetMapping("/captcha")
@@ -55,6 +62,8 @@ public class UserController {
     public ApiResponse<Void> logout(
             @RequestHeader(value = "Authorization", required = false) String authorization
     ) {
+        AuthenticatedUser user = userService.authenticateBearer(authorization);
+        cancellationService.cancel(user.userId());
         userService.logout(authorization);
         return ApiResponse.ok(null);
     }

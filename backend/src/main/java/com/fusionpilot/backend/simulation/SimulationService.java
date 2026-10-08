@@ -1,5 +1,8 @@
 package com.fusionpilot.backend.simulation;
 
+import com.fusionpilot.backend.account.ForbiddenException;
+import com.fusionpilot.backend.api.ResourceNotFoundException;
+import com.fusionpilot.backend.fusion.FusionContext;
 import com.fusionpilot.backend.fusion.FusionSample;
 import com.fusionpilot.backend.fusion.FusionService;
 import com.fusionpilot.backend.fusion.FusedTargetState;
@@ -22,15 +25,27 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
+import java.util.function.IntConsumer;
 
 @Service
 public class SimulationService {
+
+    /** Hard cap on how many runs one user may keep in their saved history. */
+    public static final int MAX_SAVED_RUNS_PER_USER = 10;
+
+    /**
+     * How many unsaved runs one user keeps. These are transient replay material rather than
+     * history, so only a recent window is retained and older ones are deleted after each run.
+     */
+    public static final int MAX_UNSAVED_RUNS_PER_USER = 20;
 
     private final ObservationService observationService;
     private final FusionService fusionService;
     private final SchedulingService schedulingService;
     private final SimulationResultStore resultStore;
     private final JdbcSimulationDetailQueryRepository detailQueryRepository;
+    private final SimulationCancellationService cancellationService;
 
     public SimulationService(
             ObservationService observationService,
@@ -43,7 +58,8 @@ public class SimulationService {
                 fusionService,
                 schedulingService,
                 resultStore,
-                (JdbcSimulationDetailQueryRepository) null
+                (JdbcSimulationDetailQueryRepository) null,
+                new SimulationCancellationService()
         );
     }
 
@@ -53,14 +69,16 @@ public class SimulationService {
             FusionService fusionService,
             SchedulingService schedulingService,
             SimulationResultStore resultStore,
-            ObjectProvider<JdbcSimulationDetailQueryRepository> detailQueryProvider
+            ObjectProvider<JdbcSimulationDetailQueryRepository> detailQueryProvider,
+            SimulationCancellationService cancellationService
     ) {
         this(
                 observationService,
                 fusionService,
                 schedulingService,
                 resultStore,
-                detailQueryProvider.getIfAvailable()
+                detailQueryProvider.getIfAvailable(),
+                cancellationService
         );
     }
 
@@ -69,61 +87,145 @@ public class SimulationService {
             FusionService fusionService,
             SchedulingService schedulingService,
             SimulationResultStore resultStore,
-            JdbcSimulationDetailQueryRepository detailQueryRepository
+            JdbcSimulationDetailQueryRepository detailQueryRepository,
+            SimulationCancellationService cancellationService
     ) {
         this.observationService = observationService;
         this.fusionService = fusionService;
         this.schedulingService = schedulingService;
         this.resultStore = resultStore;
         this.detailQueryRepository = detailQueryRepository;
+        this.cancellationService = cancellationService;
     }
 
     public SimulationResult run(ExperimentConfig config) {
+        return run(config, null);
+    }
+
+    public SimulationResult run(ExperimentConfig config, Long userId) {
+        return run(config, userId, () -> false, completed -> {
+        });
+    }
+
+    public SimulationResult run(
+            ExperimentConfig config,
+            Long userId,
+            BooleanSupplier cancelled,
+            IntConsumer progress
+    ) {
+        if (userId != null) {
+            cancellationService.start(userId);
+        }
         List<SimulationStepResult> steps = new ArrayList<>();
         Map<Integer, Integer> waitingSteps = new HashMap<>();
         List<Integer> previousAllocatedTargets = List.of();
+        // Cross-step fusion memory (Kalman filter state) belongs to exactly one run, so a fresh
+        // context is created here and never shared between the two runs of a policy comparison.
+        FusionContext fusionContext = FusionContext.forRun(config);
 
-        for (int timeStep = 0; timeStep < config.simulationSteps(); timeStep++) {
-            ObservationSample observationSample = observationService.sample(config, timeStep);
-            FusionSample fusionSample = fusionService.fuse(
-                    observationSample,
-                    config.timeStepSeconds()
+        try {
+            for (int timeStep = 0; timeStep < config.simulationSteps(); timeStep++) {
+                checkCancelled(userId, cancelled);
+                ObservationSample observationSample = observationService.sample(config, timeStep);
+                FusionSample fusionSample = fusionService.fuse(
+                        observationSample,
+                        config.timeStepSeconds(),
+                        config.fusionMethod(),
+                        fusionContext
+                );
+                SchedulingResult scheduling = schedulingService.schedule(fusionSample, config);
+                StepMetrics stepMetrics = metrics(
+                        observationSample.targetStates(),
+                        fusionSample.targetStates(),
+                        scheduling
+                );
+                steps.add(new SimulationStepResult(
+                        timeStep,
+                        observationSample.targetStates(),
+                        observationSample.observations(),
+                        fusionSample.targetStates(),
+                        scheduling,
+                        stepMetrics
+                ));
+                updateWaitingSteps(waitingSteps, scheduling);
+                previousAllocatedTargets = scheduling.allocatedTargetIds();
+                progress.accept(timeStep + 1);
+            }
+
+            SimulationResult result = new SimulationResult(
+                    UUID.randomUUID().toString(),
+                    config,
+                    List.copyOf(steps),
+                    aggregateMetrics(steps, waitingSteps, previousAllocatedTargets),
+                    Instant.now()
             );
-            SchedulingResult scheduling = schedulingService.schedule(fusionSample, config);
-            StepMetrics stepMetrics = metrics(
-                    observationSample.targetStates(),
-                    fusionSample.targetStates(),
-                    scheduling
-            );
-            steps.add(new SimulationStepResult(
-                    timeStep,
-                    observationSample.targetStates(),
-                    observationSample.observations(),
-                    fusionSample.targetStates(),
-                    scheduling,
-                    stepMetrics
-            ));
-            updateWaitingSteps(waitingSteps, scheduling);
-            previousAllocatedTargets = scheduling.allocatedTargetIds();
+            resultStore.save(result, userId);
+            if (userId != null) {
+                // The run just stored is the newest, so it always survives this cleanup.
+                resultStore.pruneUnsavedRuns(userId, MAX_UNSAVED_RUNS_PER_USER);
+            }
+            return result;
+        } finally {
+            if (userId != null) {
+                cancellationService.clear(userId);
+            }
         }
-
-        SimulationResult result = new SimulationResult(
-                UUID.randomUUID().toString(),
-                config,
-                List.copyOf(steps),
-                aggregateMetrics(steps, waitingSteps, previousAllocatedTargets),
-                Instant.now()
-        );
-        resultStore.save(result);
-        return result;
     }
 
     public SimulationResult find(String runId) {
         return resultStore.find(runId);
     }
 
-    public List<SimulationRunSummary> history(int limit) {
-        return resultStore.history(limit);
+    /** Saved history of one user, never wider than the per-user cap. */
+    public List<SimulationRunSummary> savedHistory(long userId, int limit) {
+        return resultStore.savedHistory(userId, Math.min(limit, MAX_SAVED_RUNS_PER_USER));
+    }
+
+    public int savedCount(long userId) {
+        return resultStore.savedCount(userId);
+    }
+
+    /**
+     * Moves a run into the caller's history. Only the owner may do this, and exceeding the cap
+     * evicts the owner's oldest saved run, whose id is reported back.
+     */
+    public SimulationSaveResult saveToHistory(long userId, String runId) {
+        requireOwnership(runId, userId);
+        List<String> evicted = resultStore.markSaved(userId, runId, MAX_SAVED_RUNS_PER_USER);
+        return new SimulationSaveResult(
+                runId,
+                true,
+                resultStore.savedCount(userId),
+                MAX_SAVED_RUNS_PER_USER,
+                evicted
+        );
+    }
+
+    public void removeFromHistory(long userId, String runId) {
+        requireOwnership(runId, userId);
+        resultStore.deleteSaved(userId, runId);
+    }
+
+    /**
+     * Rejects reads of another user's run. Runs written before ownership was tracked have no
+     * owner and stay readable, which keeps legacy data usable.
+     */
+    public void requireReadAccess(String runId, long userId) {
+        resultStore.ownerOf(runId).ifPresent(owner -> {
+            if (owner.longValue() != userId) {
+                throw new ForbiddenException("This simulation run belongs to another user");
+            }
+        });
+    }
+
+    private void requireOwnership(String runId, long userId) {
+        Long owner = resultStore.ownerOf(runId).orElse(null);
+        if (owner == null) {
+            throw new ResourceNotFoundException("Simulation result not found: " + runId);
+        }
+        if (owner.longValue() != userId) {
+            throw new ForbiddenException("This simulation run belongs to another user");
+        }
     }
 
     public SimulationRunDetail detail(String runId) {
@@ -141,6 +243,22 @@ public class SimulationService {
                 priority,
                 delta(roundRobin.metrics(), priority.metrics())
         );
+    }
+
+    public StrategyComparisonResult compare(ExperimentConfig config, Long userId) {
+        SimulationResult roundRobin = run(withPolicy(config, SchedulingPolicy.ROUND_ROBIN), userId);
+        SimulationResult priority = run(withPolicy(config, SchedulingPolicy.PRIORITY), userId);
+        return new StrategyComparisonResult(
+                roundRobin,
+                priority,
+                delta(roundRobin.metrics(), priority.metrics())
+        );
+    }
+
+    private void checkCancelled(Long userId, BooleanSupplier cancelled) {
+        if ((userId != null && cancellationService.isCancelled(userId)) || cancelled.getAsBoolean()) {
+            throw new SimulationCancelledException();
+        }
     }
 
     private StepMetrics metrics(

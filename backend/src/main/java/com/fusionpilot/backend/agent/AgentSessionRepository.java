@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.PreparedStatement;
+import java.sql.Types;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -37,8 +39,17 @@ public class AgentSessionRepository {
                     last_result_json = ?, analysis_json = ?, updated_at = current_timestamp
                 where trace_id = ? and user_id = ?
                 """,
-                goal, status, confirmed, planJson, eventsJson, lastResultJson,
-                analysisJson, traceId, userId
+                statement -> {
+                    statement.setString(1, goal);
+                    statement.setString(2, status);
+                    statement.setBoolean(3, confirmed);
+                    statement.setString(4, planJson);
+                    statement.setString(5, eventsJson);
+                    setNullableJson(statement, 6, lastResultJson);
+                    setNullableJson(statement, 7, analysisJson);
+                    statement.setString(8, traceId);
+                    statement.setLong(9, userId);
+                }
         );
         if (updated == 0) {
             jdbcTemplate.update(
@@ -48,9 +59,27 @@ public class AgentSessionRepository {
                          last_result_json, analysis_json)
                     values (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    traceId, userId, goal, status, confirmed, planJson, eventsJson,
-                    lastResultJson, analysisJson
+                    statement -> {
+                        statement.setString(1, traceId);
+                        statement.setLong(2, userId);
+                        statement.setString(3, goal);
+                        statement.setString(4, status);
+                        statement.setBoolean(5, confirmed);
+                        statement.setString(6, planJson);
+                        statement.setString(7, eventsJson);
+                        setNullableJson(statement, 8, lastResultJson);
+                        setNullableJson(statement, 9, analysisJson);
+                    }
             );
+        }
+    }
+
+    private void setNullableJson(PreparedStatement statement, int index, String value)
+            throws java.sql.SQLException {
+        if (value == null) {
+            statement.setNull(index, Types.LONGVARCHAR);
+        } else {
+            statement.setString(index, value);
         }
     }
 

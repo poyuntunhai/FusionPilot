@@ -9,6 +9,10 @@ spring:
   sql:
     init:
       mode: always
+  servlet:
+    multipart:
+      max-file-size: ${FUSIONPILOT_DATASET_MAX_FILE_SIZE:100MB}
+      max-request-size: ${FUSIONPILOT_DATASET_MAX_REQUEST_SIZE:110MB}
 
 server:
   port: ${BACKEND_PORT:8080}

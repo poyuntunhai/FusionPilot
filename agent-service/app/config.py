@@ -14,3 +14,5 @@ MODEL_API_KEY = os.getenv("MODEL_API_KEY", "").strip()
 MODEL_TIMEOUT_SECONDS = float(os.getenv("MODEL_TIMEOUT_SECONDS", "45"))
 MODEL_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE", "0.2"))
 MODEL_FALLBACK_TO_RULE = os.getenv("MODEL_FALLBACK_TO_RULE", "true").lower() == "true"
+# Where the domain knowledge corpus lives. Empty means the bundled `agent-service/knowledge`.
+KNOWLEDGE_DIR = os.getenv("KNOWLEDGE_DIR", "").strip()

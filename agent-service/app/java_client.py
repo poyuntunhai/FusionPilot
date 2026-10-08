@@ -87,8 +87,72 @@ async def get_agent_trace(trace_id: str, authorization: str) -> dict | None:
         raise
 
 
+# --------------------------------------------------------------------------- conversations
+#
+# Multi-turn conversations are stored as one opaque snapshot per session. A snapshot carries the
+# whole transcript, so adding a field to the conversation shape does not require a schema change;
+# the columns beside it exist only so sessions can be listed and filtered without parsing JSON.
+
+
+async def save_agent_conversation(snapshot: dict, authorization: str) -> None:
+    await _request(
+        "POST",
+        "/api/v1/agent/conversations",
+        snapshot,
+        timeout=20.0,
+        authorization=authorization,
+    )
+
+
+async def find_agent_conversation(session_id: str, authorization: str) -> dict | None:
+    try:
+        return await _request(
+            "GET",
+            f"/api/v1/agent/conversations/{session_id}",
+            timeout=20.0,
+            authorization=authorization,
+        )
+    except JavaBackendError as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+
+
+async def list_agent_conversations(authorization: str, limit: int = 30) -> list[dict]:
+    data = await _request(
+        "GET",
+        f"/api/v1/agent/conversations?limit={max(1, min(limit, 100))}",
+        timeout=20.0,
+        authorization=authorization,
+    )
+    return data if isinstance(data, list) else []
+
+
+async def delete_agent_conversation(session_id: str, authorization: str) -> None:
+    await _request(
+        "DELETE",
+        f"/api/v1/agent/conversations/{session_id}",
+        timeout=20.0,
+        authorization=authorization,
+    )
+
+
 async def validate_experiment(config: dict) -> dict:
     return await _request("POST", "/api/v1/experiments/validate", config)
+
+
+async def get_agent_memory(authorization: str) -> str:
+    data = await _request("GET", "/api/v1/agent/memory", authorization=authorization)
+    return str(data.get("memory", "") or "") if isinstance(data, dict) else ""
+
+
+async def save_agent_memory(memory: str, authorization: str) -> None:
+    await _request(
+        "PUT",
+        "/api/v1/agent/memory",
+        {"memory": memory},
+        authorization=authorization,
+    )
 
 
 async def run_simulation(config: dict, authorization: str | None = None) -> dict:

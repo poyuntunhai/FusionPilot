@@ -83,7 +83,9 @@ def test_session_uses_model_planner_boundary(monkeypatch):
     async def fake_default_config():
         return {"targetCount": 1, "simulationSteps": 1}
 
-    async def fake_model_plan(request, default_config):
+    async def fake_model_plan(request, default_config, credential=None):
+        # No token travelled with this request, so the planner must be told there is none.
+        assert credential is None
         return ExperimentPlan(
             title="model-planned",
             goal=request.goal,

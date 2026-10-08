@@ -35,6 +35,11 @@ public class FusionController {
             @RequestParam(defaultValue = "0") @Min(0) int timeStep
     ) {
         ObservationSample observationSample = observationService.sample(config, timeStep);
-        return ApiResponse.ok(fusionService.fuse(observationSample, config.timeStepSeconds()));
+        return ApiResponse.ok(fusionService.fuse(
+                observationSample,
+                config.timeStepSeconds(),
+                config.fusionMethod(),
+                FusionContext.forRun(config)
+        ));
     }
 }

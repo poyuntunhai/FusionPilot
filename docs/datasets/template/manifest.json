@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "coordinate_frame": "LOCAL_ENU",
+  "units": "meter",
+  "time_convention": "integer_step",
+  "description": "FusionPilot user dataset template"
+}

@@ -1,0 +1,4 @@
+time_step,sensor_id,source_type,target_id,x,y,available,confidence,noise_std_dev,delay_steps
+0,RADAR-01,RADAR,1,101,59,1,0.90,3.0,0
+1,RADAR-01,RADAR,1,103,62,1,0.90,3.0,0
+2,RADAR-01,RADAR,1,106,63,1,0.90,3.0,0

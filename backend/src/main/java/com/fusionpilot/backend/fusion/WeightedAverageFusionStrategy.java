@@ -2,12 +2,23 @@ package com.fusionpilot.backend.fusion;
 
 import com.fusionpilot.backend.observation.Observation;
 import com.fusionpilot.backend.observation.TargetState;
+import com.fusionpilot.backend.scenario.FusionMethod;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Confidence-weighted average: {@code x = Σ(xᵢ · cᵢ) / Σcᵢ}.
+ *
+ * <p>This is the project baseline. It needs no cross-step state, so the fusion context is unused.</p>
+ */
 @Component
 public class WeightedAverageFusionStrategy implements FusionStrategy {
+
+    @Override
+    public FusionMethod method() {
+        return FusionMethod.WEIGHTED_AVERAGE;
+    }
 
     @Override
     public String name() {
@@ -16,64 +27,28 @@ public class WeightedAverageFusionStrategy implements FusionStrategy {
 
     @Override
     public FusionResult fuse(
+            FusionContext context,
             TargetState targetState,
             List<Observation> observations,
             double timeStepSeconds
     ) {
-        List<Observation> validObservations = observations.stream()
-                .filter(this::isValid)
-                .toList();
-
+        List<Observation> validObservations = usableObservations(observations);
         if (validObservations.isEmpty()) {
-            TargetState predicted = targetState.advance(timeStepSeconds);
-            return new FusionResult(
-                    new FusedTargetState(
-                            predicted.targetId(),
-                            predicted.x(),
-                            predicted.y(),
-                            predicted.velocityX(),
-                            predicted.velocityY(),
-                            10.0,
-                            0.0,
-                            predicted.timeStep(),
-                            true
-                    ),
-                    List.of()
-            );
+            return predictionOnly(context, targetState, timeStepSeconds);
         }
 
-        double totalWeight = validObservations.stream()
-                .mapToDouble(Observation::confidence)
-                .sum();
-        double fusedX = validObservations.stream()
-                .mapToDouble(observation -> observation.x() * observation.confidence())
-                .sum() / totalWeight;
-        double fusedY = validObservations.stream()
-                .mapToDouble(observation -> observation.y() * observation.confidence())
-                .sum() / totalWeight;
-        double averageConfidence = validObservations.stream()
-                .mapToDouble(observation -> observation.confidence() * observation.confidence())
-                .sum() / totalWeight;
-
+        double[] weighted = FusionMath.weightedMean(validObservations);
         FusedTargetState state = new FusedTargetState(
                 targetState.targetId(),
-                fusedX,
-                fusedY,
+                weighted[0],
+                weighted[1],
                 targetState.velocityX(),
                 targetState.velocityY(),
-                Math.max(0.01, 1.0 / totalWeight),
-                averageConfidence,
+                Math.max(0.01, 1.0 / weighted[2]),
+                weighted[3],
                 targetState.timeStep(),
                 false
         );
         return new FusionResult(state, validObservations);
-    }
-
-    private boolean isValid(Observation observation) {
-        return observation.available()
-                && observation.confidence() > 0.0
-                && Double.isFinite(observation.x())
-                && Double.isFinite(observation.y())
-                && Double.isFinite(observation.confidence());
     }
 }

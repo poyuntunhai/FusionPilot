@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Thin wrapper so the CLI can be invoked as `fpx` from a POSIX shell.
+# Set FPX_PYTHON to pick a specific interpreter; otherwise `python3` is used.
+set -e
+PYTHON="${FPX_PYTHON:-python3}"
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "$PYTHON" "$dir/fpx.py" "$@"

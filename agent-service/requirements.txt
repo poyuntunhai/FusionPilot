@@ -1,6 +1,18 @@
+# Agent service dependencies.
+#
+# Install: pip install -r requirements.txt
+#
+# Versions are pinned to the set this project is tested against. `langgraph` drives the turn
+# orchestration in app/agent_graph.py and is a runtime dependency, not an optional extra: without it
+# the service fails at import with ModuleNotFoundError.
+
+# --- runtime
 fastapi==0.115.6
+uvicorn[standard]==0.34.0
 httpx==0.28.1
 pydantic==2.10.4
-uvicorn[standard]==0.34.0
-pytest==8.3.4
 python-dotenv==1.0.1
+langgraph==1.2.14
+
+# --- tests (the suite is part of the project: python -m pytest tests)
+pytest==8.3.4

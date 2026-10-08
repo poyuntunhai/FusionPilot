@@ -15,6 +15,14 @@ def build_plan(request: PlanRequest, default_config: dict) -> ExperimentPlan:
     if compare:
         baselines.append("PRIORITY")
 
+    # Preselect the tool that matches the stated intent, so execution follows the plan.
+    if compare:
+        recommended_tool = "compare_scheduling_policies"
+    elif _mentions_validation(request.goal):
+        recommended_tool = "validate_experiment"
+    else:
+        recommended_tool = "run_simulation"
+
     return ExperimentPlan(
         title="Multi-source tracking and resource scheduling experiment",
         goal=request.goal,
@@ -46,10 +54,17 @@ def build_plan(request: PlanRequest, default_config: dict) -> ExperimentPlan:
         ],
         requires_confirmation=True,
         planner="rule",
+        recommended_tool=recommended_tool,
     )
 
 
 def _mentions_comparison(goal: str) -> bool:
     keywords = ("compare", "comparison", "policy", "strategy", "\u5bf9\u6bd4", "\u7b56\u7565")
+    normalized = goal.lower()
+    return any(keyword in normalized for keyword in keywords)
+
+
+def _mentions_validation(goal: str) -> bool:
+    keywords = ("validate", "check", "\u6821\u9a8c", "\u68c0\u67e5")
     normalized = goal.lower()
     return any(keyword in normalized for keyword in keywords)
