@@ -1,0 +1,51 @@
+# FusionPilot Java backend: the simulation core and the REST API.
+#
+# Install:
+#   sudo cp deploy/systemd/fusionpilot-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fusionpilot-backend
+#
+# Secrets are NOT in this file. It is committed to the repository; the password
+# belongs in /opt/fusionpilot/.env, which is not (see deploy/env.example).
+
+[Unit]
+Description=FusionPilot Java backend (simulation core + REST API)
+Documentation=https://github.com/poyuntunhai/FusionPilot
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fusionpilot
+Group=fusionpilot
+WorkingDirectory=/opt/fusionpilot/backend
+
+# Provides FUSIONPILOT_DB_PASSWORD and friends. chmod 600, owned by fusionpilot.
+EnvironmentFile=/opt/fusionpilot/.env
+
+# The app reads SERVER__PORT (Spring's relaxed binding for server.port) and lets
+# it override --server.port. Left set from a stray export, it silently moves the
+# port out from under nginx, so it is cleared explicitly here.
+Environment=SERVER__PORT=
+
+# 2 GB is the target host size and the JVM would otherwise size its heap against
+# the whole machine. Without this, the JVM plus MySQL plus the agent can push the
+# box into the OOM killer while a simulation runs.
+Environment="JAVA_TOOL_OPTIONS=-Xmx512m -Xms128m"
+
+ExecStart=/usr/bin/java -jar /opt/fusionpilot/backend/app.jar \
+  --spring.profiles.active=mysql --server.port=8080
+
+Restart=always
+RestartSec=5
+
+# The service only needs to read its own directory and write uploaded datasets
+# under it. Everything else on the box stays out of reach.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/fusionpilot/backend
+
+[Install]
+WantedBy=multi-user.target

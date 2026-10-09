@@ -2,6 +2,9 @@
 
 > 目标：把本地跑通的项目部署到云服务器，让别人能通过公网访问，用于实习简历/作品集展示。
 > 当前状态：三个服务在本地 8080（Java 后端）/ 8000（Python Agent）/ 5173（Vue 前端）运行，MySQL 本地 3306。
+>
+> **可直接执行的东西在 [`deploy/`](../deploy/README.md)**：systemd 单元、Nginx 站点配置、环境变量模板、初始化脚本。
+> 本文讲思路与取舍，`deploy/` 是照着抄就能跑的命令。
 
 ---
 
@@ -139,20 +142,21 @@ sudo apt install -y nodejs
 sudo mkdir -p /opt/fusionpilot && sudo chown $USER /opt/fusionpilot
 ```
 
-### 阶段 2：数据库迁移
+### 阶段 2：数据库
 
 ```bash
-# 建库建用户（生产密码务必改强）
-sudo mysql -e "CREATE DATABASE fusionpilot CHARACTER SET utf8mb4;
-CREATE USER 'fusionpilot'@'127.0.0.1' IDENTIFIED BY '<强密码>';
+# 只需建库建用户（口令与 /opt/fusionpilot/.env 里填的保持一致）
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS fusionpilot CHARACTER SET utf8mb4;
+CREATE USER IF NOT EXISTS 'fusionpilot'@'127.0.0.1' IDENTIFIED BY '<同一个强口令>';
 GRANT ALL ON fusionpilot.* TO 'fusionpilot'@'127.0.0.1'; FLUSH PRIVILEGES;"
-
-# 导入表结构与迁移脚本
-mysql -h 127.0.0.1 -u fusionpilot -p fusionpilot < backend/src/main/resources/schema.sql
-for f in docs/mysql/migrations/*.sql; do
-  mysql -h 127.0.0.1 -u fusionpilot -p fusionpilot < "$f"
-done
 ```
+
+**表由应用自己建。** `spring.sql.init.mode=always` 会让后端在每次启动时执行
+`backend/src/main/resources/schema.sql`，里面全是 `create table if not exists`，可重复执行。
+新库**不需要**手工导入表结构。
+
+`docs/mysql/migrations/*.sql` 是**升级脚本**——给已经存在的老库补列/补表，全新部署不用跑；
+只有把一个旧库接到新版代码上时才按序（001→006）执行。
 
 ### 阶段 3：构建并部署三个服务
 
@@ -172,32 +176,21 @@ cd ../agent-service && python3 -m venv .venv
 
 ### 阶段 4：用 systemd 让三个服务开机自启、崩溃自拉起
 
-写三个 service 文件（`/etc/systemd/system/`），例：
-
-```ini
-# fusionpilot-backend.service
-[Unit]
-Description=FusionPilot Java Backend
-After=network.target mysql.service
-
-[Service]
-User=<你的用户>
-WorkingDirectory=/opt/fusionpilot/backend
-Environment="SERVER__PORT="
-Environment="SPRING_DATASOURCE_PASSWORD=<强密码>"
-ExecStart=/usr/bin/java -jar target/fusionpilot-backend-0.1.0-SNAPSHOT.jar --spring.profiles.active=mysql --server.port=8080
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Agent 服务同理，`ExecStart=/opt/fusionpilot/agent-service/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000`。
+**现成的单元文件在 `deploy/systemd/`，直接装，不用手写：**
 
 ```bash
+sudo cp deploy/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now fusionpilot-backend fusionpilot-agent
 ```
+
+两个单元都从 `EnvironmentFile=/opt/fusionpilot/.env` 读密钥，所以**单元文件里不含口令**，可以进仓库。
+几个容易写错、这份文档自己就写错过一次的点：
+
+- **口令变量名是 `FUSIONPILOT_DB_PASSWORD`**，不是 `SPRING_DATASOURCE_PASSWORD`（本项目不读后者）。
+- 必须清掉 `SERVER__PORT`（`Environment="SERVER__PORT="`）——它会覆盖 `--server.port`，残留值会让端口悄悄漂移。
+- 2G 内存要给 JVM 限堆：`Environment="JAVA_TOOL_OPTIONS=-Xmx512m -Xms128m"`。
+- Agent 用 `JAVA_BASE_URL=http://127.0.0.1:8080`，走回环，不走公网域名。
 
 ### 阶段 5：Nginx 反向代理 + 静态托管
 
@@ -232,7 +225,10 @@ server {
 }
 ```
 
-> 注意：`/api/v1/agent/` 的 location 要写在 `/api/` **之前**，否则会先命中 `/api/` 被转发到 Java 后端。
+> 注意：nginx 对**前缀 location 取最长匹配**，与书写顺序无关，所以 `/api/v1/agent/...` 必然命中更长的那条，
+> 不会落到 `/api/`。（"要写在前面"是把正则 location 的规则套过来了，纯前缀 location 不成立。）
+> 另外 `proxy_pass` **不能带结尾斜杠**：写成 `http://127.0.0.1:8080/` 会把 `/api/` 前缀吃掉，后端全部 404。
+> 完整配置见 `deploy/nginx/fusionpilot.conf`，其中还带了 SSE 必须的 `proxy_buffering off`。
 
 ### 阶段 6：HTTPS（必须，因为要传 API key）
 
@@ -249,6 +245,7 @@ sudo certbot --nginx -d your-domain.com
 
 - [ ] 设置 `FUSIONPILOT_DB_PASSWORD` 为强口令（`init.sql` 里是 `CHANGE_ME` 占位，本地沿用旧口令需显式设置）
 - [x] `application-mysql.yml` 已改为从环境变量 `FUSIONPILOT_DB_PASSWORD` 读取
+- [ ] `FUSIONPILOT_RETURN_RESET_TOKEN=false`（mysql profile 默认已是 false，确认没被环境变量覆盖）
 - [ ] Java / Agent / MySQL 只监听 127.0.0.1，不对公网开放端口
 - [ ] Nginx 配好 HTTPS（API key 走加密通道）
 - [ ] 生产环境关掉 `--reload`（Agent 的 uvicorn 热重载只用于开发）

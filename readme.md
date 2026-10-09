@@ -217,7 +217,8 @@ python tests/verify_multi_turn_end_to_end.py
 
 - **模型密钥只在请求头里传**（`X-Model-Api-Key`），落库的会话快照、事件、日志里都不含密钥；供应商报错信息在回传前会擦除密钥。
 - **用户隔离**：会话、运行记录、数据集都按认证用户隔离，跨用户访问返回 404。
-- **CORS 白名单**，不是 `*`。
+- **同源部署，因此不需要 CORS**：前端用相对路径调 `/api`，开发时由 Vite 代理、生产时由 Nginx 反代到同一个源。
+  后端**没有**任何 CORS 配置，所以不要把前端和 API 放到不同域名或端口，除非先给后端加上 CORS。
 - `.env` 已被 `.gitignore` 忽略，只有 `.env.example` 入库。
 
 > ⚠️ **MySQL 口令不写死在代码里。** `application-mysql.yml` 从环境变量 `FUSIONPILOT_DB_PASSWORD` 读取；`docs/mysql/init.sql` 里的建库口令是 `CHANGE_ME` 占位，建库时改成你自己的：

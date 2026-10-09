@@ -20,4 +20,6 @@ server:
 fusionpilot:
   version: 0.1.0-SNAPSHOT
   auth:
-    return-development-reset-token: true
+    # Dev convenience: with no mail service, the reset flow is only usable when the token is
+    # returned in the response. Set FUSIONPILOT_RETURN_RESET_TOKEN=false to turn it off here.
+    return-development-reset-token: ${FUSIONPILOT_RETURN_RESET_TOKEN:true}

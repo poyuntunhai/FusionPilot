@@ -10,4 +10,6 @@ spring:
 
 fusionpilot:
   auth:
-    return-development-reset-token: true
+    # Secure by default on the profile used for real deployments: returning the reset token in
+    # the response lets anyone reset anyone's password. See deploy/env.example.
+    return-development-reset-token: ${FUSIONPILOT_RETURN_RESET_TOKEN:false}

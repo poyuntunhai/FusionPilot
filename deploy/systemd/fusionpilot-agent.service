@@ -1,0 +1,49 @@
+# FusionPilot agent service: the LangGraph orchestration layer.
+#
+# Install:
+#   sudo cp deploy/systemd/fusionpilot-agent.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fusionpilot-agent
+#
+# Secrets are NOT in this file; see deploy/env.example.
+
+[Unit]
+Description=FusionPilot agent service (LangGraph orchestration)
+Documentation=https://github.com/poyuntunhai/FusionPilot
+After=network-online.target fusionpilot-backend.service
+Wants=network-online.target
+# The agent calls the Java backend to run simulations and to persist sessions, so
+# starting before it would just produce connection refused.
+Requires=fusionpilot-backend.service
+
+[Service]
+Type=simple
+User=fusionpilot
+Group=fusionpilot
+WorkingDirectory=/opt/fusionpilot/agent-service
+
+EnvironmentFile=/opt/fusionpilot/.env
+# Talk to the backend over loopback, never through the public origin.
+Environment=JAVA_BASE_URL=http://127.0.0.1:8080
+# Keep the process in UTF-8 regardless of the server's locale, or Chinese text
+# written to the journal comes back as escapes.
+Environment=PYTHONUNBUFFERED=1
+Environment=LANG=C.UTF-8
+
+# No --reload: that flag is for development and would spawn a watcher process
+# that restarts the service on every file change.
+ExecStart=/opt/fusionpilot/agent-service/.venv/bin/uvicorn app.main:app \
+  --host 127.0.0.1 --port 8000
+
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+# Python writes __pycache__ next to the source.
+ReadWritePaths=/opt/fusionpilot/agent-service
+
+[Install]
+WantedBy=multi-user.target

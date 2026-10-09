@@ -28,7 +28,7 @@ public class UserService {
             SessionRepository sessionRepository,
             PasswordResetRepository passwordResetRepository,
             CaptchaService captchaService,
-            @Value("${fusionpilot.auth.return-development-reset-token:true}") boolean returnDevelopmentResetToken
+            @Value("${fusionpilot.auth.return-development-reset-token:false}") boolean returnDevelopmentResetToken
     ) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;

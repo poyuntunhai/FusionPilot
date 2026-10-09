@@ -221,3 +221,15 @@ create table if not exists fp_dataset (
     index idx_dataset_user_created (user_id, created_at),
     index idx_dataset_status (status)
 );
+
+-- Long-term per-user agent memory: one row per user holding the agent's own distilled notes
+-- (preferences, findings) so a new conversation starts with context instead of from scratch.
+-- The content is model-generated text and is stored whole, so it never needs a schema change.
+create table if not exists fp_agent_memory (
+    user_id bigint primary key,
+    memory_text longtext not null,
+    updated_at timestamp not null default current_timestamp,
+    constraint fk_agent_memory_user
+        foreign key (user_id) references fp_user(user_id)
+        on delete cascade
+);
