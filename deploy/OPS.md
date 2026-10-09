@@ -55,6 +55,21 @@ ssh -i ~/.ssh/<你的私钥> root@<服务器IP> 'grep ^FUSIONPILOT_DB_PASSWORD= 
 - **报 `Public Key Retrieval is not allowed`**：到 `Advanced` 页把 `allowPublicKeyRetrieval` 设为 `true`。
   MySQL 8 的 `caching_sha2_password` 在非 TLS 连接下需要它完成 RSA 密钥交换。
 
+**怎么确认自己连的到底是哪个库** —— 这是最常见的"连不上"原因，一条命令就能判：
+
+```sql
+SELECT CURRENT_USER();
+```
+
+| 结果 | 意味着 |
+|---|---|
+| `fusionpilot@`**`localhost`** | **你连的是本机开发库**，SSH 隧道没生效 |
+| `fusionpilot@`**`127.0.0.1`** | 连的是线上库，正确 |
+
+两个库的账号定义本来就不同（本机是 `@localhost`，线上是 `@127.0.0.1`），所以**报错里的 host 会直接告诉你连到了哪**：
+看到 `Access denied for user 'fusionpilot'@'localhost'` 就是隧道没生效、流量没出你的电脑，
+不是密码错。同理，别把线上的口令填进本机库的连接 —— 两边口令不一样。
+
 ### 路径 B：手工端口转发（最稳，不依赖客户端的 SSH 功能）
 
 开一个终端挂着不动：
