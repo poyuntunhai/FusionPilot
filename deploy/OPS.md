@@ -116,6 +116,58 @@ DELETE FROM fp_user WHERE username = '<name>';
 
 ---
 
+### 用户与登录数据在哪，以及两件你做不到的事
+
+| 表 | 存什么 |
+|---|---|
+| `fp_user` | 账号本身：`username` / `email` / `password_hash` / `role` / `status` / `last_login_at` |
+| `fp_user_session` | 登录会话：`token_hash` / `expires_at` / `revoked_at` |
+| `fp_password_reset_token` | 重置令牌：`token_hash` / `expires_at` / `used_at` |
+
+**先说清楚两件做不到的事，免得白找：**
+
+- **看不到任何人的密码。** `password_hash` 是 **BCrypt 单向哈希**（`$2a$` 开头、60 字符），
+  设计上不可逆。能做的只有"重置"，没有"查看"。任何号称能从库里读出密码的做法都是错的。
+- **抓不到可用的登录令牌。** `token_hash` 是令牌的 **SHA-256**，不是令牌本身。
+  所以你无法从库里复制一条会话去冒充别人 —— 这是刻意设计的。
+
+这两点是这个项目的好属性，不是缺陷。
+
+**常见操作分两类，用对地方：**
+
+- **查数据** → DataGrip / SQL（见上一节）。
+- **"禁用某人 / 把他踢下线" → 用管理接口**，因为它会**连带吊销该用户全部会话**，
+  手写 SQL 很容易只改了状态忘了踢会话：
+
+```bash
+TOKEN="<你自己的 access token>"
+BASE="http://<你的域名或IP>"
+
+# 列出所有用户
+curl -H "Authorization: Bearer $TOKEN" $BASE/api/v1/admin/users
+
+# 禁用（INACTIVE 会同时吊销其全部会话）
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"status":"INACTIVE"}' $BASE/api/v1/admin/users/<userId>/status
+
+# 只踢下线，不禁用
+curl -X POST -H "Authorization: Bearer $TOKEN" $BASE/api/v1/admin/users/<userId>/revoke-sessions
+```
+
+状态只有 `ACTIVE` / `INACTIVE` 两种。这些接口要求调用者是 **ADMIN**，而新注册的账号一律是 `USER`，
+所以需要**先给自己提一次权**（一次性操作，在服务器上或 DataGrip 里执行）：
+
+```sql
+UPDATE fp_user SET role = 'ADMIN' WHERE username = '<你自己的用户名>';
+```
+
+改完**退出重新登录一次**，再用新的 token 调管理接口。
+
+> DataGrip 自带 HTTP Client，这些请求可以直接在它里面发，不必开终端。
+
+> 小坑：在 Windows 的 Git Bash 里跑 `mysql` 命令行客户端时，**中文列名会显示成乱码**——
+> 那是终端编码问题，不是数据库问题。DataGrip 里不会出现。
+
 ## 三、备份
 
 **一次性导出**（在你自己的电脑上执行，结果直接落到本地，天然"离开服务器"）：
