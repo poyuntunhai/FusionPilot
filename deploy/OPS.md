@@ -54,6 +54,9 @@ ssh -i ~/.ssh/<你的私钥> root@<服务器IP> 'grep ^FUSIONPILOT_DB_PASSWORD= 
   把 SSH 配置里的 `Client` 从 `Built-in` 改成 `Native`（改用系统 ssh），或直接走下面的路径 B。
 - **报 `Public Key Retrieval is not allowed`**：到 `Advanced` 页把 `allowPublicKeyRetrieval` 设为 `true`。
   MySQL 8 的 `caching_sha2_password` 在非 TLS 连接下需要它完成 RSA 密钥交换。
+- **同一页的「使用 SSL」要取消勾选。** SSH 隧道已经把整条链路加密了；再叠一层 MySQL SSL，
+  会因为服务端用的是自签证书、而客户端默认拿系统/IDE 的 CA 去校验，直接连不上。
+  **两个勾只留「使用 SSH 隧道」那一个。**
 
 **怎么确认自己连的到底是哪个库** —— 这是最常见的"连不上"原因，一条命令就能判：
 
