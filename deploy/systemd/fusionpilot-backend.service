@@ -33,8 +33,12 @@ Environment=SERVER__PORT=
 # box into the OOM killer while a simulation runs.
 Environment="JAVA_TOOL_OPTIONS=-Xmx512m -Xms128m"
 
+# Spring Boot binds 0.0.0.0 unless told otherwise, so without --server.address
+# the REST API listens on every interface and is reachable from the internet
+# whenever the firewall is not the only thing in the way. Bind it explicitly to
+# loopback: nginx is the only intended entry point.
 ExecStart=/usr/bin/java -jar /opt/fusionpilot/backend/app.jar \
-  --spring.profiles.active=mysql --server.port=8080
+  --spring.profiles.active=mysql --server.port=8080 --server.address=127.0.0.1
 
 Restart=always
 RestartSec=5

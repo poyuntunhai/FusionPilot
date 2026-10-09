@@ -61,8 +61,9 @@ ufw allow OpenSSH >/dev/null
 ufw allow 80/tcp >/dev/null
 ufw allow 443/tcp >/dev/null
 ufw --force enable >/dev/null
-echo "    enabled: 22 (SSH), 80, 443. 8080 / 8000 / 3306 stay closed - they are"
-echo "    bound to 127.0.0.1 and reached only through nginx."
+echo "    enabled: 22 (SSH), 80, 443. 8000 / 3306 / 8080 stay closed: ufw blocks"
+echo "    them, and all three bind to 127.0.0.1 - the backend needs"
+echo "    --server.address=127.0.0.1 for that, since Spring binds 0.0.0.0 by default."
 
 echo "==> mysql"
 systemctl enable --now mysql >/dev/null
