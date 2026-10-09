@@ -15,11 +15,13 @@ grader is a pure function.
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from evals.grade import KNOWN_EXPECTATIONS, Check, grade
-from evals.harness import DEFAULT_METRICS, Outcome, load_cases, run_case
+import evals.harness as harness
+from evals.grade import KNOWN_EXPECTATIONS, LIVE_SIGNIFICANT, Check, grade
+from evals.harness import DEFAULT_METRICS, LiveModel, Outcome, load_cases, run_case
 
 CASES = load_cases()
 CASES_BY_ID = {case["id"]: case for case in CASES}
@@ -400,3 +402,60 @@ def test_the_case_file_is_valid_jsonl_with_readable_text():
     for line in raw.read_text(encoding="utf-8").splitlines():
         if line.strip() and not line.startswith("//"):
             json.loads(line)
+
+
+# --------------------------------------------------------------------------- live provider mode
+
+
+def test_live_mode_puts_the_scripted_model_aside():
+    """
+    Live mode exists to measure the model, so the one thing it has to guarantee is that the case's
+    scripted answers are out of the picture. An unusable provider therefore has to make the case
+    fail, because a scripted run would have answered from the case and passed.
+
+    The base URL is malformed rather than merely unreachable. A refused connection produces the same
+    failure but costs about eleven seconds of gateway retries, and a suite that slow stops being
+    run; this fails in about one.
+    """
+    case = CASES_BY_ID["concept-grounded-answer-cites-sources"]
+    patched: list[str] = []
+    real_patch = harness.patch
+
+    def spy(target, replacement):
+        patched.append(target)
+        return real_patch(target, replacement)
+
+    with patch.object(harness, "patch", spy):
+        outcome = run_case(
+            case, LiveModel(provider="openai", model="m", api_key="k", api_base="not-a-url")
+        )
+
+    # The provider path was reached, so the scripted answers were not.
+    assert outcome.error is not None, "a live run must not be answerable from the case"
+    assert outcome.event_types() == []
+    checks = grade(case, outcome)
+    assert [check.name for check in checks] == ["case-completed"]
+    assert checks[0].passed is False
+
+    # And this is the mechanism, asserted directly so a future edit cannot quietly reinstall the
+    # substitutions "for safety": neither the classifier stub nor any model entry point is patched.
+    assert "app.agent_graph.classify_intent" not in patched
+    assert not [target for target in patched if "stream_call_with_tools" in target]
+    assert not [target for target in patched if target.endswith(".complete")]
+    # The Java core is still stubbed. Comparing two providers should not need a database, and a
+    # stubbed simulation is what makes the two runs comparable at all.
+    assert "app.domain_tools.run_simulation" in patched
+
+
+def test_every_live_significant_name_is_a_check_the_grader_emits():
+    """
+    A typo in LIVE_SIGNIFICANT would silently stop counting a check in live mode: the run would
+    still print a number, and that number would just be measuring less than it claims. Comparing
+    the set against the names the grader actually produces catches the typo and the later rename.
+    """
+    emitted = {
+        check.name
+        for case in CASES
+        for check in grade(case, Outcome(case_id=case["id"]))
+    }
+    assert LIVE_SIGNIFICANT <= emitted, f"not emitted by the grader: {LIVE_SIGNIFICANT - emitted}"

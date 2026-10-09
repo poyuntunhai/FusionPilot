@@ -240,9 +240,33 @@ def _java_stubs(case: dict[str, Any], runs: list[dict[str, Any]], validation_err
     return fake_validate, fake_run, fake_compare
 
 
-def run_case(case: dict[str, Any]) -> Outcome:
+@dataclass(frozen=True)
+class LiveModel:
+    """
+    A real provider to point the cases at, instead of each case's own scripted model.
+
+    Nothing about this is test-only plumbing: the provider and model travel in the request body and
+    the token in the ``X-Model-Api-Key`` header, which is exactly how the web UI supplies them. That
+    is the point — a live run exercises the same path a user does, so a mis-wired credential shows
+    up as a failure here rather than only in production.
+    """
+
+    provider: str
+    model: str
+    api_key: str
+    api_base: str | None = None
+
+
+def run_case(case: dict[str, Any], live: LiveModel | None = None) -> Outcome:
     """
     Drive one case through the real HTTP surface and return what happened.
+
+    Without ``live`` the case's scripted model answers every provider call, so the run is
+    deterministic and offline. With ``live`` the scripted model is left out completely — including
+    the classifier stub, because which route the model picks is the thing being measured — and the
+    routing and prose in the outcome are the provider's own. The Java core is stubbed either way:
+    comparing providers should not require a database, and a stubbed simulation is what makes two
+    runs comparable at all.
 
     Deliberately total: a case that explodes produces an Outcome carrying the error rather than an
     exception, because one broken case must not abort the report for the other twenty.
@@ -307,25 +331,31 @@ def run_case(case: dict[str, Any]) -> Outcome:
         "app.domain_tools.validate_experiment": stubbed_validate,
         "app.domain_tools.run_simulation": stubbed_run,
         "app.domain_tools.compare_scheduling_policies": stubbed_compare,
-        "app.agent_graph.classify_intent": fake_classify_intent,
-        # Every module that calls a provider holds its own reference to `complete`, so each one has
-        # to be replaced. Patching only the graph would leave the reflection auditor, the memory
-        # distiller and the result analyst talking to the real internet — which is what happened
-        # before this list was completed, and it was invisible because all three swallow gateway
-        # failures. It cost a network round trip per case and made the suite depend on a third
-        # party being unreachable-but-fast.
-        "app.agent_graph.complete": scripted.complete,
-        "app.reflection.complete": scripted.complete,
-        "app.memory.complete": scripted.complete,
-        "app.result_analysis.complete": scripted.complete,
-        "app.model_planner.complete": scripted.complete,
-        "app.agent_graph.stream_call_with_tools": scripted.stream,
-        "app.agent_loop.stream_call_with_tools": scripted.stream,
-        # Blanket guard rather than a per-module list. The inbound request goes through httpx.Client
-        # (the ASGI transport), so AsyncClient is exactly the outbound channel: this fails loudly if
-        # any future provider or Java path slips through the patches above.
-        "httpx.AsyncClient.send": _forbid_outbound,
     }
+    if live is None:
+        # Scripted mode: every provider call is answered from the case, and the outbound channel is
+        # closed so that a missed substitution fails loudly instead of quietly reaching the internet.
+        overrides.update(
+            {
+                "app.agent_graph.classify_intent": fake_classify_intent,
+                # Every module that calls a provider holds its own reference to `complete`, so each
+                # one has to be replaced. Patching only the graph would leave the reflection
+                # auditor, the memory distiller and the result analyst talking to the real internet
+                # — which is what happened before this list was completed, and it was invisible
+                # because all three swallow gateway failures. It cost a network round trip per case
+                # and made the suite depend on a third party being unreachable-but-fast.
+                "app.agent_graph.complete": scripted.complete,
+                "app.reflection.complete": scripted.complete,
+                "app.memory.complete": scripted.complete,
+                "app.result_analysis.complete": scripted.complete,
+                "app.model_planner.complete": scripted.complete,
+                "app.agent_graph.stream_call_with_tools": scripted.stream,
+                "app.agent_loop.stream_call_with_tools": scripted.stream,
+                # Blanket guard rather than a per-module list. The inbound request goes through
+                # httpx.Client (the ASGI transport), so AsyncClient is exactly the outbound channel.
+                "httpx.AsyncClient.send": _forbid_outbound,
+            }
+        )
     app.dependency_overrides[require_agent_user] = lambda: {
         "authorization": "Bearer eval-token",
         "user": {"userId": EVAL_USER_ID},
@@ -337,7 +367,7 @@ def run_case(case: dict[str, Any]) -> Outcome:
             for target, replacement in overrides.items():
                 stack.enter_context(patch(target, replacement))
             client = TestClient(app)
-            session_id = _drive(client, case, auto_approve, outcome)
+            session_id = _drive(client, case, auto_approve, outcome, live)
         # The persisted snapshot is what the UI would reload, so grading reads that rather than the
         # live object: a field that is not serialised is not really part of the product's state.
         _record(outcome, stored.get(session_id), session_store.get(session_id), scripted.calls)
@@ -349,24 +379,33 @@ def run_case(case: dict[str, Any]) -> Outcome:
     return outcome
 
 
-def _drive(client: TestClient, case: dict[str, Any], auto_approve: bool, outcome: Outcome) -> str | None:
+def _drive(
+    client: TestClient,
+    case: dict[str, Any],
+    auto_approve: bool,
+    outcome: Outcome,
+    live: LiveModel | None = None,
+) -> str | None:
     """Create a conversation, send the message, answer the confirmation, return the session id."""
+    model_body: dict[str, Any] = {
+        "model_provider": live.provider if live else "openai",
+        "model_name": live.model if live else "eval-model",
+    }
+    if live and live.api_base:
+        model_body["model_api_base_url"] = live.api_base
+    headers = {"X-Model-Api-Key": live.api_key if live else "eval-key"}
+    if live and live.api_base:
+        headers["X-Model-Api-Base"] = live.api_base
     created = client.post(
         "/api/v1/agent/conversations",
-        json={"auto_approve": auto_approve, "model_provider": "openai", "model_name": "eval-model"},
+        json={"auto_approve": auto_approve, **model_body},
     )
     outcome.http_status = created.status_code
     if created.status_code != 200:
         raise AssertionError(f"conversation creation failed: {created.status_code} {created.text[:200]}")
     session_id = created.json()["session_id"]
 
-    payload = {
-        "message": case["message"],
-        "model_provider": "openai",
-        "model_name": "eval-model",
-        "auto_approve": auto_approve,
-    }
-    headers = {"X-Model-Api-Key": "eval-key"}
+    payload = {"message": case["message"], "auto_approve": auto_approve, **model_body}
 
     if case.get("stream"):
         # The streaming endpoint is the one the UI uses, so a case may opt into it. The frames are
@@ -384,7 +423,7 @@ def _drive(client: TestClient, case: dict[str, Any], auto_approve: bool, outcome
         approve = decision == "approve"
         response = client.post(
             f"/api/v1/agent/conversations/{session_id}/decision",
-            json={"approve": approve, "model_provider": "openai", "model_name": "eval-model"},
+            json={"approve": approve, **model_body},
             headers=headers,
         )
         if response.status_code != 200:

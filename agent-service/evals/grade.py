@@ -91,6 +91,30 @@ KNOWN_EXPECTATIONS = frozenset(
     }
 )
 
+# Checks that still mean something when the cases are pointed at a real provider instead of each
+# case's scripted model (`run_evals --api-key`).
+#
+# Most of the vocabulary is not in here, and that is the point. Assertions like `answer_contains`,
+# `plan_steps` or `analysis.summary_contains` quote the scripted model's own words and counts: they
+# verify that the script ran, so with a real model they would fail for a reason that is not a
+# product defect. Counting them would turn a provider comparison into noise.
+#
+# What remains is the set the harness docstring promised `--api-base` would answer: the product's
+# hard contracts (a turn reaches a state, every tool call gets a result, an expensive action is
+# gated, prose does not invent metrics) plus the routing decision, which is the model's own and is
+# exactly the thing worth measuring against a real provider.
+LIVE_SIGNIFICANT = frozenset(
+    {
+        "case-completed",
+        "transcript-replayable",
+        "status",
+        "requires-confirmation",
+        "no-invented-metrics",
+        "route",
+        "handoff-to",
+    }
+)
+
 
 def grade(case: dict[str, Any], outcome: Outcome) -> list[Check]:
     """Run every applicable check for one case. Always includes the shared invariants."""

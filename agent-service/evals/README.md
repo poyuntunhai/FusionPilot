@@ -163,10 +163,39 @@ python -m evals.run_evals --json report.json # 机器可读报告
 `httpx.Client`，所以 `AsyncClient` 恰好就是出站通道）。用例 0.3 秒跑完，而且"离线确定性"这个说法
 是被强制执行的，不是自我宣称的。
 
-## 衡量模型判断力
+## 衡量模型判断力（`--api-key`）
 
-需要真实 provider 时，本套件的用例设计仍然适用，但 `model` 脚本要换成真实调用 —— 那一步还没做，
-所以这里不声称它能用。当前可用的手段是对着真实模型跑既有的 HTTP 端到端脚本（`tests/verify_*.py`）
-并在浏览器里读结果。要做成"自动给模型打分的 benchmark"，正确的下一步是：让 driver 支持 `--api-base`/
-`--api-key`，对同一个用例同时记录**机制类断言**（路由、门限、工具、引用、防幻觉 —— 这些与模型无关）
-和**模型自身的输出**（供人读或交由单独的评分标准），并把两者分开报告。
+脚本模式测的是"给定模型决策之后 Agent 的行为"，它刻意不理解模型。要衡量模型本身，把同一批用例指向
+真实 provider：
+
+```bash
+python -m evals.run_evals --group routing \
+  --provider zhipu --model glm-4-flash --api-key <你的 token>
+
+# 自定义端点（自建网关、代理、或本机 mock）也行：
+python -m evals.run_evals --api-base http://127.0.0.1:8111/v1 --model mock-gpt --api-key k
+```
+
+做了两件事，缺一不可：
+
+1. **脚本模型被完全摘掉**，连 `classify_intent` 的桩也不装。provider 与 model 走请求体、token 走
+   `X-Model-Api-Key` 请求头——和网页里用户自己贴 key 是同一条路径，所以凭据接错会在这里就暴露，
+   而不是等到线上。
+2. **只统计与模型措辞无关的断言**（`grade.LIVE_SIGNIFICANT`）：`case-completed`、
+   `transcript-replayable`、`status`、`requires-confirmation`、`no-invented-metrics`、`route`、
+   `handoff-to`。其余断言（`answer-contains`、`plan-steps`、`analysis-summary-contains`…）是照着
+   脚本原文写的，拿真实模型跑必然对不上——那验证的是脚本、不是产品。它们会显示为
+   `[skip] not counted`。
+
+所以真实模式的分数回答的是：**这个模型选路选对了吗、有没有守住产品的硬契约**。它不回答"Agent 写得好
+不好"——那是脚本模式的事。两者是两个不同的分数，因此报告头部会写明当前处于哪种模式，而不是只丢一句
+"17 passed"。
+
+Java 核心在两种模式下都打桩：比较两个 provider 不该需要数据库，而"同一个假运行"也是两次结果可比的
+前提。
+
+**验证到哪一步了。** 只在本机 mock provider 上验证过：走真实网关 → mock，routing 4 条用例 2 通过
+2 失败，失败的正是"mock 自己做了另一个决定"（它在该用例上要了确认，而用例期望不用），说明打分的确实
+是模型的决策。**没有**对着真实厂商验证过——我没有你的 key。另外把 `--api-base` 指成 `not-a-url`
+会立刻失败，这条已固化成测试 `test_live_mode_puts_the_scripted_model_aside`，用来防止哪天有人"顺手"
+把脚本模型装回去。真实模式走真网络、带重试，比脚本模式慢两个数量级，不适合放进 CI。

@@ -7,8 +7,8 @@
 Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视化。三者边界严格，Agent 的每一句结论都必须能追溯到 Java 返回的结构化结果。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Java tests](https://img.shields.io/badge/Java%20tests-39%20passed-brightgreen.svg)](#测试与评测)
-[![Agent tests](https://img.shields.io/badge/Agent%20tests-208%20passed-brightgreen.svg)](#测试与评测)
+[![Java tests](https://img.shields.io/badge/Java%20tests-45%20passed-brightgreen.svg)](#测试与评测)
+[![Agent tests](https://img.shields.io/badge/Agent%20tests-210%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
 > **小白第一次 vibe 的产物，正在准备部署上线中，欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！**
@@ -69,6 +69,7 @@ flowchart LR
 ### 3. 工程化（这部分和功能同样重要）
 
 - **评测集**（`agent-service/evals/`，17 个用例）：用例自带脚本化模型，**0.4 秒跑完，不需要 API key、不需要 MySQL、不需要 Java 进程**。测的是"给定模型决策后 Agent 的行为"：路由分派、确认门、工具顺序、接地与引用、自检、角色调用次数、成本门（哪些回合**不该**付费）。评分器是纯函数，词汇表里每条断言都有对应的负例测试。
+- **同一个评测集也能衡量模型本身**：加 `--api-key` 就会摘掉脚本模型，把用例指向真实 provider，只统计与模型措辞无关的断言（路由是否正确、产品硬契约是否守住）。这是两个不同的分数，报告会写明当前是哪种模式。
 - **离线确定性是被强制的**：用例运行期间 `httpx.AsyncClient.send` 被替换为抛异常，任何漏打桩的出网路径都会响亮失败，而不是悄悄打到真实 provider。
 - **不做 LLM 评委**：防幻觉用机械办法——回答里的小数/百分数必须能追到本次运行的指标（约 0.5% 相对容差），且不得提到本次没返回的指标名。已知局限（裸整数不查）写在文档里而不是粉饰。
 - **假死排查工具**：零依赖无头 Chrome 验证脚本，能在真实浏览器里复现"页面看起来全死了"这类问题并抓控制台/网络错误。
@@ -167,7 +168,7 @@ FusionPilot/
 │   │   └── ...             会话、工具、Java 客户端、记忆
 │   ├── knowledge/          领域知识库（7 文档 / 42 小节）
 │   ├── evals/              评测集（用例 + 执行器 + 评分器 + 报告）
-│   └── tests/              208 个测试 + 6 个 HTTP 端到端脚本
+│   └── tests/              210 个测试 + 6 个 HTTP 端到端脚本
 ├── web/                    Vue 3 + TypeScript + Vite：可视化
 ├── docs/
 │   ├── images/             README 用的界面截图
@@ -184,13 +185,17 @@ FusionPilot/
 ## 测试与评测
 
 ```bash
-# Agent 单元测试（208 个）
+# Agent 单元测试（210 个）
 cd agent-service && python -m pytest tests
 
-# 评测集（17 个用例，0.4 秒，离线）
+# 评测集（17 个用例，0.4 秒，离线，脚本模型）
 cd agent-service && python -m evals.run_evals
 
-# Java 测试（39 个）
+# 同一批用例对着真实模型跑（衡量模型选路，需要自己的 key）
+cd agent-service && python -m evals.run_evals --group routing \
+  --provider zhipu --model glm-4-flash --api-key <你的 token>
+
+# Java 测试（45 个）
 cd backend && ./mvnw test
 
 # 前端类型检查（注意必须是 -b）
@@ -240,7 +245,7 @@ python tests/verify_multi_turn_end_to_end.py
 - **融合层能直接拿到目标真值状态**，因此除 `KALMAN_FILTER` 外上报的速度不是估计量。
 - 一次运行的指标是**单个随机种子上的一个样本**，不能据此给方法排序（要排序需多种子重复）。
 - 卡尔曼滤波的过程噪声是**按"不机动"整定的假设值**，不是标定值。
-- 评测集目前**不衡量模型判断力**（用例自带脚本化模型）；要用真实模型打分需要额外一步（见 `agent-service/evals/README.md`）。
+- 评测集默认**不衡量模型判断力**（用例自带脚本化模型）；加 `--api-key` 可以衡量，但那只覆盖与模型措辞无关的断言，且只在本机 mock 上验证过，未对真实厂商验证（见 `agent-service/evals/README.md`）。
 
 这些限制同时也写进了 Agent 的知识库，所以当有人问"这个平台能做什么"时，Agent 会照着说，而不是替项目吹牛。
 
