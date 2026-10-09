@@ -54,6 +54,20 @@
 > 打不了 OpenAI 官方 API。想稳用 OpenAI / Anthropic 就选**美国（硅谷）**；想国内访问快又免备案就选
 > **韩国（首尔）**。国产模型（DeepSeek / Qwen / 智谱）在任何海外节点都能直连，从亚洲节点访问还更快。
 
+**镜像怎么选**：切到「**系统镜像**」标签，选 **Ubuntu 24.04 LTS**（没有就选 22.04 LTS）。
+**不要选应用镜像**——宝塔 / 1Panel / OpenClaw / Hermes Agent / WordPress 这些给你的是一套预装好的环境，
+和本项目要的干净系统直接冲突：
+
+- `deploy/bootstrap.sh` 是按 Ubuntu/Debian 写的（`apt-get` 装 `openjdk-17-jre-headless` /
+  `mysql-server` / `nginx` / `python3-venv`）。应用镜像里预装的 Nginx、MySQL 会和它撞版本、抢 80 和 3306 端口。
+- 2G 内存下，镜像自带的面板和额外服务白占 100～300MB，跑仿真时容易被 OOM Killer 盯上。
+- 就算你确实想要面板（宝塔之类），也应该**部署完成后再装**，而不是让它从镜像里带进来接管 Nginx。
+
+> **为什么优先 24.04 而不是 22.04**：`bootstrap.sh` 用的是系统 `python3`。Ubuntu 22.04 自带 **3.10**，
+> 低于本项目声明的 **Python 3.11+**；24.04 自带 **3.12**，直接满足。依赖包的 `Requires-Python` 其实只要
+> ≥3.10，代码里也没用 3.11 专属 API（`TaskGroup` / `StrEnum` / `tomllib` 等都没有），所以 22.04 大概率
+> 也能跑——但它从未在 3.10 上测过，没必要为省这一步冒风险。
+
 > 一条经验：轻量的"30Mbps"是**峰值**不是独享，晚高峰国内访问可能降到几 Mbps，展示够用，别指望推流。
 > 买完先用国内三网 ping/mtr 测一下你的 IP，如果晚高峰延迟从 40ms 跳到 150ms，说明回程绕路了。
 
