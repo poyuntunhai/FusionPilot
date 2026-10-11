@@ -123,9 +123,11 @@ if [[ "$ONLY" != "backend" && "$ONLY" != "agent" ]]; then
   step "Build frontend"
   cd "$REPO_ROOT/web"
   # Vite empties the output directory itself, but doing it here keeps the build honest: the result
-  # can never be a mix of this build and a stale one, and it sidesteps environments where the
-  # delete step inside the bundler is the thing that fails.
-  rm -rf "$REPO_ROOT/web/dist"
+  # can never be a mix of this build and a stale one. Guarded on existence so a first-ever deploy
+  # does not run a recursive delete against a path that was never there.
+  if [[ -d "$REPO_ROOT/web/dist" ]]; then
+    rm -rf "$REPO_ROOT/web/dist"
+  fi
   npm run build
   [[ -f "$REPO_ROOT/web/dist/index.html" ]] || { echo "error: web/dist/index.html missing after build" >&2; exit 1; }
   note "built web/dist ($(du -sh "$REPO_ROOT/web/dist" | cut -f1))"
@@ -170,7 +172,11 @@ step "Fix ownership"
 note "$DEPLOY_SERVICE_USER owns $DEPLOY_APP_ROOT"
 
 # ------------------------------------------------------------------ restart
-if [[ "$DO_RESTART" == "1" ]]; then
+if [[ "$DO_RESTART" == "1" && "$ONLY" == "web" ]]; then
+  # Nothing to restart: nginx reads /opt/fusionpilot/web/dist from disk on every request, so a
+  # frontend-only deploy is live the moment the upload finishes.
+  step "Restart skipped (frontend only; nginx serves the new dist immediately)"
+elif [[ "$DO_RESTART" == "1" ]]; then
   step "Restart services"
   "${SSH[@]}" "systemctl restart $BACKEND_SERVICES && systemctl is-active --quiet $BACKEND_SERVICES"
   note "restarted: $BACKEND_SERVICES"
@@ -215,7 +221,7 @@ curl -fsS --max-time 5 "https://$DEPLOY_DOMAIN/api/v1/agent/health" | grep -q '"
   || { echo "error: agent did not report UP. Check: ${SSH[*]} 'journalctl -u fusionpilot-agent -n 50'" >&2; exit 1; }
 note "agent: UP"
 
-curl -fsS --max-time 10 -o /dev/null "https://$DEPLOY_DOMAIN/" \
+curl -fsSI --max-time 10 "https://$DEPLOY_DOMAIN/" | head -1 | grep -q ' 200' \
   || { echo "error: the landing page did not return 200" >&2; exit 1; }
 note "landing page: 200"
 

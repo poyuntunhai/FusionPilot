@@ -96,6 +96,10 @@ button:disabled { cursor: wait; opacity: .55; }
    to the same width because each span holds exactly one character. */
 .rise-glyph { display: inline-block; animation: glyphRise .92s cubic-bezier(.22, 1.02, .3, 1) both; }
 .rise-glyph-cjk { animation-duration: .78s; }
+/* Splitting the word into inline-blocks hands the browser a line-break opportunity after every
+   letter, which it did not have before — at 1080px wide "FusionPilot" wrapped to "FusionPil / ot".
+   The original single text node could only overflow, never wrap, so pin it back to one line. */
+.landing-word { white-space: nowrap; }
 .radar-stage { position: relative; min-height: 560px; overflow: hidden; border: 1px solid #1f3854; background: #081523; box-shadow: 0 22px 70px rgba(0, 0, 0, .22); }
 .radar-stage::before, .radar-stage::after { position: absolute; content: ""; pointer-events: none; }
 .radar-stage::before { top: 50%; left: 24px; right: 24px; height: 1px; background: rgba(56, 189, 248, .08); }
