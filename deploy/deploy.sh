@@ -127,6 +127,28 @@ note "ssh ok"
   || { echo "error: $DEPLOY_APP_ROOT/backend or /web is missing on the host. Run deploy/bootstrap.sh first." >&2; exit 1; }
 note "$DEPLOY_APP_ROOT present"
 
+# A backup script that quietly stopped working is the classic way to find out at the worst possible
+# moment. This is not an alerting channel — it only speaks when someone is already looking at the
+# server — but it is the cheapest honest one, and it needs no external service.
+backup_state=$("${SSH[@]}" '
+  DIR=/var/backups/fusionpilot
+  if [ -f "$DIR/LAST_BACKUP_FAILED" ]; then
+    echo "ALERT 最近一次备份失败：$(tr "\n" " " < "$DIR/LAST_BACKUP_FAILED")"
+  elif [ -f "$DIR/last-success.txt" ]; then
+    DAYS=$(( ( $(date +%s) - $(stat -c %Y "$DIR/last-success.txt") ) / 86400 ))
+    if [ "$DAYS" -ge 2 ]; then
+      echo "ALERT 备份已连续 ${DAYS} 天没有成功（应每天一次）：journalctl -u fusionpilot-backup.service -n 30"
+    else
+      echo "OK 备份正常（${DAYS} 天内有成功记录）"
+    fi
+  else
+    echo "ALERT 从未成功备份过 —— 定时器装了吗：systemctl list-timers fusionpilot-backup.timer"
+  fi' 2>/dev/null || echo "UNKNOWN 读不到备份状态")
+case "$backup_state" in
+  OK*) note "$backup_state" ;;
+  *) printf '\n\033[33m  !! %s\033[0m\n\n' "$backup_state" ;;
+esac
+
 # Nothing is live until the restart step at the very end, so a failure anywhere above leaves the
 # previous version running. Re-running the script after fixing the cause is safe.
 

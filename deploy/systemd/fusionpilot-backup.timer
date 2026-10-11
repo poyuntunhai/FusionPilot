@@ -1,0 +1,29 @@
+# Daily FusionPilot database backup.
+#
+# Install:
+#   sudo cp deploy/systemd/fusionpilot-backup.{service,timer} /etc/systemd/system/
+#   sudo cp deploy/backup/fusionpilot-backup.sh /usr/local/bin/
+#   sudo chmod 700 /usr/local/bin/fusionpilot-backup.sh
+#   sudo systemctl daemon-reload && sudo systemctl enable --now fusionpilot-backup.timer
+#
+# Check it is alive and when it runs next:
+#   systemctl list-timers fusionpilot-backup.timer
+#   tail -20 /var/backups/fusionpilot/last-success.txt
+#   journalctl -u fusionpilot-backup.service -n 30
+#
+# 03:30 rather than midnight: the dump competes with the simulation and the agent for a 2-vCPU box,
+# and nobody is using the site then. Persistent=true means a run missed because the machine was off
+# or busy still happens once it is back, instead of being skipped for the day.
+
+[Unit]
+Description=Daily FusionPilot database backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Spread the start a little so it does not always land on the exact same second as other jobs.
+RandomizedDelaySec=15m
+Persistent=true
+Unit=fusionpilot-backup.service
+
+[Install]
+WantedBy=timers.target

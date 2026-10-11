@@ -1,0 +1,45 @@
+# FusionPilot database backup.
+#
+# Install:
+#   sudo cp deploy/systemd/fusionpilot-backup.{service,timer} /etc/systemd/system/
+#   sudo cp deploy/backup/fusionpilot-backup.sh /usr/local/bin/
+#   sudo chmod 700 /usr/local/bin/fusionpilot-backup.sh
+#   sudo mkdir -p /var/backups/fusionpilot
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fusionpilot-backup.timer
+#
+# /var/backups/fusionpilot MUST exist before the unit starts. ProtectSystem=strict makes /var
+# read-only, and ReadWritePaths only re-opens paths systemd can already see — a leading "-" (ignore
+# if missing) therefore does NOT create it, it silently leaves the unit unable to write at all.
+# The first version of this file used the "-" form and failed with "Read-only file system".
+#
+# Run one right now, without waiting for the timer:
+#   sudo systemctl start fusionpilot-backup.service
+#   systemctl status fusionpilot-backup.service
+#
+# Runs as root because that is what MySQL's auth_socket plugin requires for the root database user.
+# The script itself is 700 and takes no arguments, so the privilege buys nothing beyond reading the
+# database over the local socket and writing to /var/backups.
+
+[Unit]
+Description=FusionPilot database backup (mysqldump + verification)
+Documentation=https://github.com/poyuntunhai/FusionPilot
+After=mysql.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/fusionpilot-backup.sh
+
+# A dump this size takes seconds; if it is still running after ten minutes something is wrong
+# (a hung mysqldump, usually a lock or a full disk) and it should be killed and reported rather
+# than left to pile up behind the next scheduled run.
+TimeoutStartSec=600
+
+# Nothing here needs network access, a writable /usr, or a home directory.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+# The only path the script writes to. It has to exist at unit start — see the install note above.
+ReadWritePaths=/var/backups/fusionpilot

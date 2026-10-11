@@ -764,20 +764,32 @@ async function request<T>(
     // itself the evidence, and it falls through to the catch below.
     backendReachable.value = true
     if (!response.ok || payload.success === false) {
-      throw new Error(payload.message || 'Backend request failed')
+      // 5xx means the backend broke rather than refused, and carries no message meant for a person.
+      // 4xx carries one, so it stays local to the panel that caused it.
+      if (response.status >= 500) {
+        pushAlert('服务内部错误，请稍后重试。', `HTTP ${response.status} ${endpointOf(url)} — ${payload.message ?? ''}`)
+      }
+      throw new BackendError(payload.message || `Backend request failed (HTTP ${response.status})`, response.status)
     }
     return payload.data as T
   } catch (error) {
+    if (error instanceof BackendError) {
+      throw error
+    }
     if (error instanceof DOMException && error.name === 'AbortError') {
       if (timedOut) {
         // A request that never answered says the backend is not serving right now. A deliberate
-        // cancel does not, which is why only the timeout branch flips the flag.
+        // cancel does not, which is why only the timeout branch reports it.
         backendReachable.value = false
+        pushAlert('请求超时，服务可能正忙，请稍后重试。', `${REQUEST_TIMEOUT_MS}ms 无响应 — ${endpointOf(url)}`)
         throw new Error(`Request timed out: ${url}`)
       }
       throw error
     }
+    // Either the request never reached the backend, or the reply was not a backend reply at all —
+    // a proxy or edge error page has an HTML body, so the json() above is what threw.
     backendReachable.value = false
+    pushAlert('无法连接服务，请检查网络后重试。', `${endpointOf(url)} — ${reasonOf(error)}`)
     throw error
   } finally {
     window.clearTimeout(timeoutId)
@@ -1114,6 +1126,64 @@ async function loadSystemStatus() {
   } catch {
     backendReachable.value = false
   }
+}
+
+// ---------------------------------------------------------------- failure feedback
+// A request that never reached the backend, timed out, or came back 5xx has to be said out loud.
+// Previously it surfaced only where it happened — and in a couple of places not at all (`catch {}` on
+// the model-status loader) — which leaves someone staring at an empty list with no idea why.
+//
+// The alert is global, deduplicated and dismissible. The technical detail goes in the hover text:
+// what a visitor needs is "it failed and here is what to do", not a URL and a stack message.
+type SystemAlert = {
+  id: number
+  text: string
+  detail: string
+  kind: 'error' | 'warn'
+  at: number
+}
+
+const systemAlerts = ref<SystemAlert[]>([])
+const ALERT_DEDUPE_MS = 10_000
+const ALERT_KEEP = 3
+let alertSeq = 0
+
+function pushAlert(text: string, detail: string, kind: 'error' | 'warn' = 'error') {
+  const now = Date.now()
+  // One failure usually fires from several loaders at the same moment; the same line three times
+  // over just trains people to close the banner without reading it.
+  if (systemAlerts.value.some((alert) => alert.text === text && now - alert.at < ALERT_DEDUPE_MS)) {
+    return
+  }
+  systemAlerts.value = [
+    ...systemAlerts.value,
+    { id: ++alertSeq, text, detail, kind, at: now }
+  ].slice(-ALERT_KEEP)
+}
+
+function dismissAlert(id: number) {
+  systemAlerts.value = systemAlerts.value.filter((alert) => alert.id !== id)
+}
+
+/**
+ * An error the backend itself produced. It carries a message written for the screen that triggered
+ * it, so it is shown there and deliberately NOT repeated as a global alert.
+ */
+class BackendError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+function endpointOf(url: string) {
+  return url.split('?')[0]
+}
+
+function reasonOf(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
 }
 
 // ---------------------------------------------------------------- notice board
@@ -1608,13 +1678,25 @@ async function requestAgent<T>(
     const payload = await response.json()
     if (!response.ok) {
       const detail = payload.detail
-      throw new Error(typeof detail === 'object' ? detail.message : String(detail || 'Agent request failed'))
+      throw new BackendError(
+        typeof detail === 'object' ? detail.message : String(detail || 'Agent request failed'),
+        response.status
+      )
     }
     return payload as T
   } catch (error) {
+    if (error instanceof BackendError) {
+      // The chat panel shows this one; it has the context.
+      throw error
+    }
     if (error instanceof DOMException && error.name === 'AbortError') {
+      // A slow model is a normal outcome here, and the caller already explains it, so this one is
+      // not escalated to a global alert.
       throw new Error('Agent request timed out. A slow model may still be answering.')
     }
+    // The agent service is a separate process and has no indicator of its own in the top bar (that
+    // one reports the Java backend), so its transport failures have to be announced here or nowhere.
+    pushAlert('Agent 服务暂时不可用，请稍后重试。', `agent ${endpointOf(url)} — ${reasonOf(error)}`)
     throw error
   } finally {
     window.clearTimeout(timeoutId)
@@ -1656,6 +1738,8 @@ async function loadAgentModelStatus() {
       selectedAgentModel.value = agentModelStatus.value.current.model ?? selectedProviderInfo.value?.defaultModel ?? ''
     }
   } catch {
+    // The model list is not worth an inline error of its own, but it must not disappear silently
+    // either — requestAgent already raised a global alert for anything that is not a business reply.
     agentModelStatus.value = null
   }
 }
@@ -2185,6 +2269,21 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </header>
+
+    <!-- Transport failures, announced once and dismissible. The technical detail is the hover text:
+         a visitor needs to know it failed and what to do, not which endpoint or exception it was. -->
+    <div v-if="systemAlerts.length" class="alert-stack" role="status" aria-live="polite">
+      <div
+        v-for="alert in systemAlerts"
+        :key="alert.id"
+        class="alert-stack-item"
+        :class="alert.kind"
+        :title="alert.detail"
+      >
+        <span class="alert-stack-text">{{ alert.text }}</span>
+        <button class="alert-stack-close" type="button" aria-label="关闭提示" @click="dismissAlert(alert.id)">&times;</button>
+      </div>
+    </div>
 
     <main class="workspace">
       <section v-if="!authUser" class="landing-hero">

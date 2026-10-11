@@ -68,6 +68,15 @@ button:disabled { cursor: wait; opacity: .55; }
 .notice-title { margin: 0 0 4px; color: var(--muted-strong); font-size: 12.5px; font-weight: 650; }
 .notice-item.is-unread .notice-title { color: #f1f7ff; }
 .notice-body { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; }
+/* Transport-failure toasts. Deliberately NOT a full-width bar: a bar that pushes the page down
+   every time a request hiccups is worse than the hiccup. z-index sits below the auth modal (20) and
+   the notice panel (30) so those still win. */
+.alert-stack { position: fixed; top: 84px; right: 16px; z-index: 15; display: grid; gap: 8px; width: min(340px, calc(100vw - 32px)); }
+.alert-stack-item { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; border: 1px solid #754c25; border-left: 3px solid #f59e0b; border-radius: var(--border-radius-md); background: #241b12; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.alert-stack-text { flex: 1; color: #ffd596; font-size: 12.5px; line-height: 1.55; }
+.alert-stack-close { flex: none; border: 0; padding: 0 2px; color: #b98a52; background: transparent; font-size: 15px; line-height: 1; }
+.alert-stack-close:hover { color: #ffd596; }
+
 /* Custom cursor. `cursor: none` targets <html> and is added by script, so an environment without
    JS never loses its pointer. On a background this dark a plain outline disappears, which is why
    both parts carry a glow: cyan against #07111f reads clearly and cannot be mistaken for the chart
@@ -526,7 +535,13 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
 .agent-chat-grid { display: grid; grid-template-columns: minmax(230px, 260px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .chat-panel { display: flex; flex-direction: column; max-height: calc(100vh - 150px); min-height: 560px; }
 
-.agent-model-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); background: var(--panel-deep); }
+/* position/z-index are load-bearing, not decoration. The rise animation leaves this bar with a
+   transform, and a transform makes it a stacking context — inside which z-index: 120 on the model
+   dropdown only orders it against the bar's OWN children. Against the sibling chat grid below, a
+   stacking context with z-index:auto loses purely on DOM order, which put the model list behind the
+   conversation panel. Pinning the bar above its sibling restores the dropdown's own z-index.
+   Keep this below .notice-panel (30) and .auth-overlay (20) — both must stay on top. */
+.agent-model-bar { position: relative; z-index: 5; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); background: var(--panel-deep); }
 .model-bar-field { display: grid; gap: 5px; min-width: 130px; }
 .model-bar-model { min-width: 170px; }
 .model-bar-key { flex: 1 1 260px; min-width: 220px; }

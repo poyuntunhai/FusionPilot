@@ -309,7 +309,73 @@ curl -s "$BASE/api/v1/system/messages"
 
 ## 三、备份
 
-**一次性导出**（在你自己的电脑上执行，结果直接落到本地，天然"离开服务器"）：
+### 已经在跑的那套（systemd 定时器）
+
+```bash
+systemctl list-timers fusionpilot-backup.timer    # 下次什么时候跑
+systemctl start fusionpilot-backup.service        # 现在立刻备份一次（升级前手动跑很合适）
+journalctl -u fusionpilot-backup.service -n 30    # 上次跑的完整日志
+cat /var/backups/fusionpilot/last-success.txt     # 上次成功的时间、大小、表数
+ls -lh /var/backups/fusionpilot/                  # 现有备份文件
+```
+
+- 每天 **03:30**（±15 分钟随机抖动）跑一次，保留最近 **14 份**
+- 连不上数据库、磁盘写满、dump 被截断，**都会让这次备份判为失败**并返回非 0
+- 文件权限 600、目录归 root；脚本是 700，不接受任何参数
+
+**脚本不是"跑完就完事"**，它会验三件事，任何一条不过就整体失败：
+
+1. `gzip -t` 能解压（挡住磁盘写满导致的半截文件）
+2. 内容结尾有 `Dump completed`（挡住被中断的 dump）
+3. 解压后 `CREATE TABLE` 的数量 ≥ 库里的表数（挡住"成功但内容是空的"）
+
+**为什么重要**：`mysqldump` 对空 schema 也会返回 0，所以只看退出码的备份脚本可以在
+"什么都没备份到"的情况下一直报成功。
+
+### 失败怎么让你知道（以及它的局限）
+
+| 渠道 | 什么时候能看到 |
+|---|---|
+| 失败标记 `/var/backups/fusionpilot/LAST_BACKUP_FAILED`（含时间与原因） | 主动去看 |
+| `journalctl -u fusionpilot-backup.service` | 主动去看 |
+| **`./deploy/deploy.sh` 每次部署时会检查并高亮提醒** | 你部署时 |
+| 备份超过 2 天没成功 → 同样会在部署时提醒 | 你部署时 |
+
+**要说清楚**：这些都需要"你去看了"才会看到。**这不是及时推送**。要做到"半夜失败、早上手机响"，
+需要一个外部通道（邮件 SMTP、企业微信/钉钉机器人、或者云厂商的短信告警）——那要额外配置，
+现在没做。如果你想要，告诉我用哪种，我接上。
+
+### 恢复
+
+```bash
+# 在服务器上（会覆盖当前数据，先确认这是你要的那一份）
+zcat /var/backups/fusionpilot/fusionpilot-2026-10-11.sql.gz | mysql fusionpilot
+```
+
+**验证备份能不能用，最靠谱的办法是真恢复一次**（到一个临时库，不碰生产）：
+
+```bash
+mysql -e 'CREATE DATABASE fusionpilot_restore_test CHARACTER SET utf8mb4;'
+zcat /var/backups/fusionpilot/fusionpilot-2026-10-11.sql.gz | mysql fusionpilot_restore_test
+mysql -N -B -e "select count(*) from information_schema.tables where table_schema='fusionpilot_restore_test'"
+mysql -e 'DROP DATABASE fusionpilot_restore_test;'
+```
+
+### 最重要的一条：备份必须离开这台机器
+
+**同机备份等于没有备份**——机器丢了、磁盘坏了、误删了，两者一起没。
+定时任务只负责"在服务器上生成"，**把它拉走需要你在自己电脑上做**：
+
+```bash
+# 在本地执行，把服务器上的备份同步到本机目录
+mkdir -p ~/fusionpilot-backups
+scp -i ~/.ssh/<你的私钥> root@<服务器IP>:'/var/backups/fusionpilot/*.sql.gz' ~/fusionpilot-backups/
+```
+
+（更好的做法是传到对象存储或另一台机器；`scp` 到本地至少保证"服务器没了数据还在你手上"。
+另外注意：**拉到本地只是备份，本机磁盘挂了同样会没** —— 重要的东西建议再往网盘/对象存储放一份。）
+
+### 临时手动导出一份（不想用脚本时）
 
 ```bash
 ssh -i ~/.ssh/<你的私钥> root@<服务器IP> \
@@ -318,21 +384,6 @@ ssh -i ~/.ssh/<你的私钥> root@<服务器IP> \
 ```
 
 `--single-transaction` 让导出不锁表（InnoDB），线上跑着也能安全备份。
-
-**定时备份**（在服务器上，每天 3 点，保留最近 14 天）：
-
-```bash
-mkdir -p /var/backups/fusionpilot
-cat > /etc/cron.d/fusionpilot-backup <<'EOF'
-0 3 * * * root mysqldump --single-transaction --default-character-set=utf8mb4 fusionpilot > /var/backups/fusionpilot/$(date +\%F).sql 2>/dev/null; find /var/backups/fusionpilot -name '*.sql' -mtime +14 -delete
-EOF
-```
-
-**恢复**：
-
-```bash
-mysql fusionpilot < fusionpilot-2026-10-09.sql
-```
 
 > 注意：定时备份落在**同一台机器的系统盘**上。磁盘坏了、机器被重置，备份跟着一起没。
 > 真正的备份必须离开这台机器——至少每周手动下载一次。
@@ -435,7 +486,45 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
 
 ---
 
-## 六、改完代码怎么让线上更新
+## 六、容量与内存边界（实测数据）
+
+这台 2 核 2G 的机器**注册人数不是瓶颈**：一行账号约 1KB，磁盘还剩 30G 以上，几十万账号都放得下。
+真正的边界是**仿真结果占用的 JVM 堆**。
+
+### 实测（线上实况 + 本机同参数测堆）
+
+| 项 | 值 |
+|---|---|
+| 内存 | 总 1613MB，可用约 739MB |
+| 应用栈常驻 | java 198MB + mysqld 180MB + uvicorn 94MB |
+| 系统与云厂商组件 | 约 200MB（AliYunDun / fwupd / tuned / multipathd …） |
+| 磁盘 | 40G，用 16% |
+| JVM 堆 | `-Xmx512m`，空载约 20MB |
+
+单条仿真结果在堆里的**实测**占用（用 `jcmd GC.run` 强制 GC 后测保留量）：
+
+| 规模 | 单次耗时 | 单条结果 |
+|---|---|---|
+| 3 目标 × 100 步（默认） | 0.53s | **2.4 MB** |
+| 20 目标 × 500 步 | 3.55s | **30.5 MB** |
+| 50 目标 × 1000 步 | 6.39s | **147.6 MB** |
+
+### 两个已经加上的保护
+
+1. **结果缓存在 `SimulationResultStore` 里是有限的**：按估算字节最多 192MB 的 LRU。
+   超出的部分会被淘汰——**淘汰不会丢数据**，因为每条结果同时也写在数据库里，
+   `find()` 读不到内存会回退去查库。单条结果如果自己就超过整个预算，直接不进缓存。
+2. **单次运行有规模上限**：`targetCount × simulationSteps ≤ 50000`，超了在接口校验层就被拒（返回 400）。
+   在这之前两个字段各自的上限允许 50 × 10000 = 500000，实测约需 1.5GB 堆 —— 会直接把进程打死。
+
+### 想跑得更大怎么办
+
+- 上限 50000 对应约 150MB 单条结果，在 512MB 堆上已经是"能跑但吃紧"。
+- 想放宽就得同时加大 `-Xmx`（改 systemd 单元里的 `JAVA_TOOL_OPTIONS`）并确认机器内存，
+  **但 1.6G 的机器没有多少空间**：可用只有 739MB。
+- 真要跑大规模场景，正确做法是**换更大的机器**，而不是在这台上调参数。
+
+## 七、改完代码怎么让线上更新
 
 **先说结论：不会自动同步。** 线上跑的是服务器上的那份构建产物，你在本地改代码，
 **除非重新构建并上传，线上永远是旧的**。所以"像很多网站那样持续更新"这件事，
