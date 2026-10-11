@@ -241,14 +241,20 @@ nginx -t && systemctl reload nginx
 
 ```bash
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d 你的域名
+certbot --nginx -d 你的域名 -d www.你的域名      # 加 -m 你的邮箱 可收到到期提醒
 ```
 
-certbot 会自动改这个配置文件、加 443 段、并配好自动续期。**必须上 HTTPS**——
+certbot 会自动改这个配置文件、加 443 段、并注册 `certbot.timer`（systemd 每 12 小时跑一次，
+只在剩余不足 30 天才真续期）。**必须上 HTTPS**——
 用户在页面上填的模型 API key 走 `X-Model-Api-Key` 请求头，明文 HTTP 等于把 key 广播出去。
 
-> 还没有域名？先去注册商买个 .com 或 .xyz，把 A 记录指向这台机器的 IP，等解析生效（几分钟）再跑 certbot。
+> 还没有域名？先去注册商买个 `.com` 或 `.xyz`，把 A 记录指向这台机器的 IP，等解析生效再跑 certbot。
 > 只想先看看效果，用 IP + HTTP 也能跑，但别把带 key 的演示发出去。
+
+> **解析查不到先别急着改记录。** 刚买或刚改过 NS 的域名，可能出现「在注册商控制台能查到、
+> 直连它家权威 NS 也能查到，但公共 DNS（`223.5.5.5` / `8.8.8.8`）返回 `NXDOMAIN`」——
+> 那是**注册局的 NS 委派还没生效**（`.cn` 常要几小时，最慢次日），不是配置错。
+> 判据：权威 DNS 查得到就说明配置对，只剩等。**解析没生效就跑 certbot 必然失败。**
 
 ---
 

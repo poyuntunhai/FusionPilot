@@ -57,9 +57,20 @@ ssh -i ~/.ssh/<你的私钥> root@<服务器IP> 'grep ^FUSIONPILOT_DB_PASSWORD= 
 - **同一页的「使用 SSL」要取消勾选。** SSH 隧道已经把整条链路加密了；再叠一层 MySQL SSL，
   会因为服务端用的是自签证书、而客户端默认拿系统/IDE 的 CA 去校验，直接连不上。
   **两个勾只留「使用 SSH 隧道」那一个。**
-- **同一页的「使用 SSL」要取消勾选。** SSH 隧道已经把整条链路加密了；再叠一层 MySQL SSL，
-  会因为服务端用的是自签证书、而客户端默认拿系统/IDE 的 CA 去校验，直接连不上。
-  **两个勾只留「使用 SSH 隧道」那一个。**
+
+**关于「内省级别」（Introspection level）——不用管**
+
+DataGrip 连上后弹出「为 xxx 选择的内省级别」，是它问你要把数据库元数据抓多少层，**与连接是否成功无关**：
+
+| 级别 | 内容 |
+|---|---|
+| 1 | 只抓库和 schema，不抓表 |
+| 2 | 抓库 / schema / 对象，**跳过系统 schema**（`information_schema`、`performance_schema`、`mysql`、`sys`） |
+| 3（默认） | 全部抓，包括系统 schema |
+
+默认的 **3** 就够用。唯一差别是树里会多出 `information_schema` / `performance_schema` 这些噪音目录，
+**不影响任何查询**。想清静可以在数据源属性 → `Options` → `Introspection` 里改成 2。
+**注意级别 2 会连 `mysql` 库一起隐藏**，将来要翻系统表时还得改回来。
 
 **连不上时，先看 `using password`，别看用户名里的 host**
 
@@ -285,7 +296,7 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
    | A | `www` | 服务器公网 IP |
 
 4. **等解析生效**（几分钟到几十分钟）。验证：`nslookup 你的域名` 应返回服务器 IP。
-   **解析没生效前不要去申请证书**，会失败。
+   **解析没生效前不要去申请证书**，会失败。见下面「解析迟迟不生效」那一节。
 5. **改 nginx 的 server_name**：把 `deploy/nginx/fusionpilot.conf` 里的 `server_name _;`
    改成 `server_name 你的域名 www.你的域名;`，然后：
 
@@ -300,6 +311,51 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
    sudo certbot --nginx -d 你的域名 -d www.你的域名
    ```
 
+   想收到证书到期提醒邮件就带上 `-m 你的邮箱`（或用 `--register-unsafely-without-email`
+   跳过）。**不带邮箱不影响续期**，只是收不到警告信。事后补邮箱：
+
+   ```bash
+   sudo certbot update_account --email 你的邮箱
+   ```
+
 7. **验证**：浏览器打开 `https://你的域名` 证书有效；`curl -I http://你的域名` 应 301 跳到 https。
 
 > **域名一定要开自动续费。** 域名过期后被抢注，基本要不回来。
+
+### 解析迟迟不生效：先分清「配置错」和「没委派」
+
+国内注册商改了 NS / 刚买的新域名，常见这样一个陷阱：
+
+- 在注册商 DNS 控制台记录加好了，**直连它自家的权威 DNS 也能查到**：
+  `nslookup 你的域名 <权威NS，如 dns13.hichina.com>`
+- 但公共 DNS 一律返回 `NXDOMAIN`（不存在）：
+  `nslookup 你的域名 223.5.5.5` / `nslookup 你的域名 8.8.8.8`
+
+**这不是你配错了，是注册局的 NS 委派还没生效**——`.cn` / `.com` 这类需要把「这个域名的权威 NS 是谁」
+从注册商同步到注册局，`.cn` 通常几小时、最慢次日。
+**判据：权威能查到 = 配置对，只剩等。** 这时候什么都别改，改了反而乱。
+
+中间怎么盯进度（不必一直手动查）：跑个定时任务每小时 `nslookup`，生效了通知自己。
+
+### 本机实际情况（2026-10-11 已完成，供参考）
+
+- 域名 **`fusionpilot.cn`**，注册商阿里云（万网），A 记录 `@` / `www` → `43.108.33.193`
+- 证书由 **Let's Encrypt** 签发，`/etc/letsencrypt/live/fusionpilot.cn/`，**到期 2027-01-09**
+- 续期是全自动的：安装时创建了 **`certbot.timer`**，systemd 每 12 小时跑一次，
+  只在剩余不足 30 天时真正续。查状态：
+
+  ```bash
+  systemctl list-timers certbot.timer --no-pager
+  sudo certbot renew --dry-run        # 演练一次续期，验证配置没坏
+  ```
+
+- 改 nginx 前的配置备份留在服务器 **`/root/fusionpilot.nginx.bak`**（回滚就直接 cp 回去再 reload）
+- certbot 在 80 端口那个 server 块里加了「按 host 301 到 https」，并在末尾 `return 404`，
+  这样别的域名扫到这台机器不会被当成正常站点——**这是 certbot 的正常产物，别删**
+- 证书签发后自测（本地执行）：
+
+  ```bash
+  curl -sI http://fusionpilot.cn/  | head -1     # 301，Location: https://fusionpilot.cn/
+  curl -sI https://fusionpilot.cn/ | head -1     # 200
+  curl -s -o /dev/null -w "%{http_code}\n" https://fusionpilot.cn/api/v1/auth/captcha   # 200，证明反代通
+  ```
