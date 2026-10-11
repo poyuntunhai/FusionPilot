@@ -35,6 +35,10 @@ button:disabled { cursor: wait; opacity: .55; }
 .topbar-action.accent { border-color: var(--cyan); color: var(--cyan); }
 .topbar-action.active { border-color: var(--cyan); color: var(--cyan); background: rgba(56, 189, 248, .08); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #45d483; box-shadow: 0 0 12px #45d483; }
+.status-dot.offline { background: #f43f5e; box-shadow: 0 0 12px #f43f5e; }
+/* .topbar-status applies text-transform: uppercase to its labels; a version tag is lowercase by
+   convention ("v0.2.0", not "V0.2.0"), so this one opts back out. */
+.topbar-version { text-transform: none; }
 .status-divider { width: 1px; height: 12px; background: var(--line); }
 .notice-center { position: relative; display: flex; align-items: center; }
 .notice-bell { position: relative; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid #31506d; color: var(--muted-strong); background: transparent; }

@@ -317,6 +317,11 @@ type SystemNotice = {
   /** Filled in by the backend per user. Always false for anonymous visitors. */
   read: boolean
 }
+type SystemStatus = {
+  service: string
+  status: string
+  version: string
+}
 type AgentView = 'workbench' | 'agent'
 type AgentToolName =
   | 'validate_experiment'
@@ -753,6 +758,11 @@ async function request<T>(
       signal: controller.signal
     })
     const payload = await response.json()
+    // Reachability is decided here, after the body parsed, not right after fetch resolved. A dead
+    // backend usually surfaces as a proxy/edge error page — a real HTTP response with an HTML body —
+    // and "we got bytes back" is not the same thing as "the backend answered". The parse failing is
+    // itself the evidence, and it falls through to the catch below.
+    backendReachable.value = true
     if (!response.ok || payload.success === false) {
       throw new Error(payload.message || 'Backend request failed')
     }
@@ -760,10 +770,14 @@ async function request<T>(
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       if (timedOut) {
+        // A request that never answered says the backend is not serving right now. A deliberate
+        // cancel does not, which is why only the timeout branch flips the flag.
+        backendReachable.value = false
         throw new Error(`Request timed out: ${url}`)
       }
       throw error
     }
+    backendReachable.value = false
     throw error
   } finally {
     window.clearTimeout(timeoutId)
@@ -1083,6 +1097,23 @@ function stopCustomCursor() {
   window.removeEventListener('blur', hideCursor)
   document.removeEventListener('mouseout', onCursorLeaveWindow)
   hideCursor()
+}
+
+// ---------------------------------------------------------------- backend status
+// The top bar used to advertise "JAVA 核心 : 8080" and "本地仿真" — build-time facts in a place
+// users read as live status. What they actually need to know is whether the service is up and which
+// version they are on, so the indicator reports exactly that: the version comes from the health
+// endpoint, and the dot reflects real traffic (see `request`) rather than a one-off check at load.
+const systemStatus = ref<SystemStatus | null>(null)
+const backendReachable = ref(true)
+
+async function loadSystemStatus() {
+  try {
+    systemStatus.value = await request<SystemStatus>('/api/v1/system/health')
+    backendReachable.value = true
+  } catch {
+    backendReachable.value = false
+  }
 }
 
 // ---------------------------------------------------------------- notice board
@@ -2042,6 +2073,7 @@ onMounted(async () => {
   loadStoredAgentKey()
   startCustomCursor()
   // Loaded before the token check on purpose: the bell is part of the landing page too.
+  void loadSystemStatus()
   void loadSystemNotices()
   const storedToken = localStorage.getItem('fusionpilot_access_token')
   if (storedToken) {
@@ -2094,7 +2126,12 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="topbar-status">
-        <span class="status-dot"></span><span>&#26412;&#22320;&#20223;&#30495;</span><span class="status-divider"></span><span>JAVA &#26680;&#24515; : 8080</span>
+        <span class="status-dot" :class="{ offline: !backendReachable }"></span>
+        <span>{{ backendReachable ? '\u670d\u52a1\u6b63\u5e38' : '\u540e\u7aef\u4e0d\u53ef\u8fbe' }}</span>
+        <template v-if="systemStatus">
+          <span class="status-divider"></span>
+          <span class="topbar-version" :title="`${systemStatus.service} / ${systemStatus.status}`">v{{ systemStatus.version }}</span>
+        </template>
         <span class="status-divider"></span>
         <div class="notice-center">
           <button
