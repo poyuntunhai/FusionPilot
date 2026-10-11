@@ -10,6 +10,7 @@ import com.fusionpilot.backend.simulation.SimulationCancelledException;
 import com.fusionpilot.backend.dataset.DatasetImportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -113,6 +114,53 @@ public class GlobalExceptionHandler {
                 details
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    /**
+     * Database failures. Without this they fell through to the catch-all and the client got
+     * "Unexpected server error" plus a class name in {@code details} — which is how a result too large
+     * for the server's {@code max_allowed_packet} presented itself: a simulation that had already
+     * finished, then a save that failed, and nothing anyone could act on.
+     *
+     * <p>Both drivers are declared {@code runtime} scope on purpose (the application starts against
+     * either H2 or MySQL), so their exception types cannot be referenced here. Walking the cause chain
+     * for a class <em>name</em> is the price of that.
+     */
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ErrorResponse> handleDataAccess(DataAccessException exception) {
+        String rootCause = rootCauseName(exception);
+        if (hasCauseNamed(exception, "PacketTooBigException")) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                    .body(ErrorResponse.of(
+                            "RESULT_TOO_LARGE",
+                            "仿真结果太大，数据库拒绝写入：请减小运行规模（目标数 × 时间步数），"
+                                    + "或把数据库的 max_allowed_packet 调到 32M 以上。",
+                            List.of(rootCause)
+                    ));
+        }
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of(
+                        "DATABASE_ERROR",
+                        "数据库操作失败，请稍后重试。",
+                        List.of(rootCause)
+                ));
+    }
+
+    private boolean hasCauseNamed(Throwable throwable, String simpleName) {
+        for (Throwable current = throwable; current != null; current = current.getCause()) {
+            if (simpleName.equals(current.getClass().getSimpleName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String rootCauseName(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getClass().getSimpleName();
     }
 
     @ExceptionHandler(Exception.class)

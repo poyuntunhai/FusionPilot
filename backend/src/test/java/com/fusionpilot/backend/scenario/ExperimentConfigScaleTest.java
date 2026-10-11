@@ -1,5 +1,6 @@
 package com.fusionpilot.backend.scenario;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
@@ -48,11 +49,39 @@ class ExperimentConfigScaleTest {
                 .anyMatch(violation -> violation.getMessage().contains("规模过大"));
     }
 
+    @Test
+    void theValidationPropertyDoesNotLeakIntoJson() throws Exception {
+        // Jackson serialises a record from its components AND from any isX()/getX() method, so the
+        // constraint method above turned up as an extra "scaleWithinBudget" field in every config the
+        // API returned. It is not a component, so a client echoing that config back would be sending
+        // a field the record cannot accept.
+        ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(config(3, 100));
+
+        assertThat(json).doesNotContain("scaleWithinBudget");
+    }
+
+    @Test
+    void aConfigSurvivesASerialisationRoundTrip() throws Exception {
+        // The frontend posts the config back when it re-runs or saves a run, so anything Jackson adds
+        // that the record cannot consume breaks that round trip.
+        ExperimentConfig original = config(3, 100);
+        ObjectMapper mapper = new ObjectMapper();
+
+        String json = mapper.writeValueAsString(original);
+
+        assertThat(mapper.readValue(json, ExperimentConfig.class)).isEqualTo(original);
+    }
+
     private Set<jakarta.validation.ConstraintViolation<ExperimentConfig>> violations(
             int targetCount,
             int simulationSteps
     ) {
-        return validator.validate(new ExperimentConfig(
+        return validator.validate(config(targetCount, simulationSteps));
+    }
+
+    static ExperimentConfig config(int targetCount, int simulationSteps) {
+        return new ExperimentConfig(
                 "scale-test",
                 targetCount,
                 simulationSteps,
@@ -62,6 +91,6 @@ class ExperimentConfigScaleTest {
                 SchedulingPolicy.ROUND_ROBIN,
                 20260928L,
                 List.of(new ObservationSourceConfig(ObservationSourceType.RADAR, 3.0, 0.05, 0, 0.9))
-        ));
+        );
     }
 }

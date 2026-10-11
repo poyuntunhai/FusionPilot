@@ -1,5 +1,6 @@
 package com.fusionpilot.backend.scenario;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
@@ -33,9 +34,23 @@ public record ExperimentConfig(
      *
      * <p>At 50,000 the worst case is about 150 MB live: large, but survivable, and the result store
      * declines to cache anything that size (see {@code SimulationResultStore}).
+     *
+     * <p><strong>This limit implies a MySQL setting.</strong> The whole result is also written to
+     * {@code fp_simulation_run.result_json} as one blob, and at 50,000 units that blob is about 27 MB,
+     * so the server needs {@code max_allowed_packet ≥ 32M}. MySQL 8 defaults to 64M and the deployment
+     * is fine, but a local install configured down to 4M fails at save time with
+     * {@code PacketTooBigException} — the run completes and then cannot be stored. See deploy/OPS.md.
      */
     public static final int MAX_SCALE_PER_RUN = 50_000;
 
+    /**
+     * Bean Validation constraint, and also a derived property as far as Jackson is concerned: a record
+     * is serialised from its components <em>and</em> any {@code isX()}/{@code getX()} method, so
+     * without {@code @JsonIgnore} this boolean leaks into every config the API returns — including the
+     * config echoed back inside a result. It is also not a component, so a client that round-trips
+     * that config would be sending back a field the record cannot accept.
+     */
+    @JsonIgnore
     @AssertTrue(message = "单次运行规模过大：targetCount × simulationSteps 不能超过 50000，请减少目标数或时间步数")
     public boolean isScaleWithinBudget() {
         return scaleOf(targetCount, simulationSteps) <= MAX_SCALE_PER_RUN;
