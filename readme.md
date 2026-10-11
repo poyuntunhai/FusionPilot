@@ -1,3 +1,5 @@
+**此网站已上线部署：<https://fusionpilot.cn>**
+
 # FusionPilot · 一体化雷达与电子对抗仿真平台
 
 > 一个把**雷达多源融合 / 资源调度仿真核心**和**能自己设计并执行实验的 LLM Agent**放在一起跑的数字实验室。
@@ -11,9 +13,8 @@ Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视
 [![Agent tests](https://img.shields.io/badge/Agent%20tests-210%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
-> **小白第一次 vibe 的产物，已部署上线并在持续迭代**（免备案机器 + Nginx + Let's Encrypt，
-> 一条命令的部署脚本和运维手册见 [`deploy/`](deploy/)）。
-> 欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！
+> **小白第一次 vibe 的产物，欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！**
+> 部署与运维手册见 [`deploy/`](deploy/)。
 
 ![首页](docs/images/landing.png)
 

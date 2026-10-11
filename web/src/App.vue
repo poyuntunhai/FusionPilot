@@ -974,6 +974,116 @@ async function logout() {
 // rather than a string. Array.from splits by code point, which keeps any non-BMP character intact.
 const LANDING_WORD_LETTERS = Array.from('FusionPilot')
 const LANDING_TITLE_CHARACTERS = Array.from('一体化雷达与电子对抗系统数字模型')
+// Same treatment for the two signed-in pages, so opening them reads as the same motion.
+const WORKBENCH_TITLE_CHARACTERS = Array.from('观测、融合与决策')
+const AGENT_TITLE_CHARACTERS = Array.from('雷达与电子对抗协同助手')
+
+// ---------------------------------------------------------------- custom cursor
+// A glowing ring plus a solid dot, drawn over everything and following the pointer.
+//
+// `cursor: none` is applied to <html> from JS rather than from the stylesheet, which gives two
+// properties for free: the mechanism degrades to the normal OS pointer if the script never runs,
+// and it is only enabled on devices that actually have a hovering pointer (matchMedia below), so a
+// touch device keeps its native behaviour instead of losing its cursor entirely.
+const CURSOR_HOT_SELECTOR =
+  'a, button, input, select, textarea, summary, label, [role="button"], .notice-item'
+const cursorRingEl = ref<HTMLDivElement | null>(null)
+const cursorDotEl = ref<HTMLDivElement | null>(null)
+let cursorTargetX = 0
+let cursorTargetY = 0
+let cursorRingX = 0
+let cursorRingY = 0
+let cursorFrame: number | undefined
+let cursorActive = false
+let cursorEase = 0.2
+
+function stepCursor() {
+  const ring = cursorRingEl.value
+  const dot = cursorDotEl.value
+  if (!ring || !dot) {
+    // The nodes are gone (unmounted); stop the loop rather than spinning on null.
+    cursorFrame = undefined
+    return
+  }
+  cursorRingX += (cursorTargetX - cursorRingX) * cursorEase
+  cursorRingY += (cursorTargetY - cursorRingY) * cursorEase
+  ring.style.transform = `translate3d(${cursorRingX}px, ${cursorRingY}px, 0) translate(-50%, -50%)`
+  dot.style.transform = `translate3d(${cursorTargetX}px, ${cursorTargetY}px, 0) translate(-50%, -50%)`
+  cursorFrame = window.requestAnimationFrame(stepCursor)
+}
+
+function onCursorMove(event: PointerEvent) {
+  cursorTargetX = event.clientX
+  cursorTargetY = event.clientY
+  if (cursorActive) return
+  cursorActive = true
+  // Start the ring on the pointer instead of letting it glide in from (0, 0).
+  cursorRingX = cursorTargetX
+  cursorRingY = cursorTargetY
+  document.documentElement.classList.add('custom-cursor')
+  cursorRingEl.value?.classList.add('is-visible')
+  cursorDotEl.value?.classList.add('is-visible')
+  if (cursorFrame === undefined) {
+    cursorFrame = window.requestAnimationFrame(stepCursor)
+  }
+}
+
+function onCursorOver(event: PointerEvent) {
+  const target = event.target as HTMLElement | null
+  cursorRingEl.value?.classList.toggle('is-hot', Boolean(target?.closest?.(CURSOR_HOT_SELECTOR)))
+}
+
+function onCursorDown() {
+  cursorRingEl.value?.classList.add('is-pressed')
+}
+
+function onCursorUp() {
+  cursorRingEl.value?.classList.remove('is-pressed')
+}
+
+function hideCursor() {
+  if (!cursorActive) return
+  cursorActive = false
+  document.documentElement.classList.remove('custom-cursor')
+  cursorRingEl.value?.classList.remove('is-visible', 'is-hot', 'is-pressed')
+  cursorDotEl.value?.classList.remove('is-visible')
+  if (cursorFrame !== undefined) {
+    window.cancelAnimationFrame(cursorFrame)
+    cursorFrame = undefined
+  }
+}
+
+function onCursorLeaveWindow(event: MouseEvent) {
+  // relatedTarget is null only when the pointer left the window entirely — moving between two
+  // elements also fires mouseout, and hiding the cursor there would make it flicker.
+  if (!event.relatedTarget) hideCursor()
+}
+
+const cursorEnabled = ref(false)
+
+function startCustomCursor() {
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return
+  cursorEnabled.value = true
+  // With reduced motion the ring sits on the dot instead of trailing it: still a custom cursor,
+  // just without the glide.
+  cursorEase = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0.2
+  window.addEventListener('pointermove', onCursorMove, { passive: true })
+  window.addEventListener('pointerover', onCursorOver, { passive: true })
+  window.addEventListener('pointerdown', onCursorDown, { passive: true })
+  window.addEventListener('pointerup', onCursorUp, { passive: true })
+  window.addEventListener('blur', hideCursor)
+  document.addEventListener('mouseout', onCursorLeaveWindow)
+}
+
+function stopCustomCursor() {
+  window.removeEventListener('pointermove', onCursorMove)
+  window.removeEventListener('pointerover', onCursorOver)
+  window.removeEventListener('pointerdown', onCursorDown)
+  window.removeEventListener('pointerup', onCursorUp)
+  window.removeEventListener('blur', hideCursor)
+  document.removeEventListener('mouseout', onCursorLeaveWindow)
+  hideCursor()
+}
 
 // ---------------------------------------------------------------- notice board
 // Release notes rendered behind the bell in the top bar. The messages are broadcast to everyone,
@@ -1930,6 +2040,7 @@ onMounted(async () => {
   window.addEventListener('resize', resizeChart)
   document.addEventListener('click', onDocumentClick)
   loadStoredAgentKey()
+  startCustomCursor()
   // Loaded before the token check on purpose: the bell is part of the landing page too.
   void loadSystemNotices()
   const storedToken = localStorage.getItem('fusionpilot_access_token')
@@ -1962,6 +2073,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('popstate', handlePopState)
   window.removeEventListener('resize', resizeChart)
   document.removeEventListener('click', onDocumentClick)
+  stopCustomCursor()
   stopPlayback()
   if (chartRenderFrame !== undefined) {
     window.cancelAnimationFrame(chartRenderFrame)
@@ -2089,11 +2201,18 @@ onBeforeUnmount(() => {
 
       <section v-if="!authUser || activeView === 'workbench'" class="intro-row">
         <div>
-          <p class="eyebrow">&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;</p>
-          <h1>&#35266;&#27979;&#12289;&#34701;&#21512;&#19982;&#20915;&#31574;</h1>
-          <p class="lede">&#36816;&#34892;&#21487;&#22797;&#29616;&#30340;&#38647;&#36798;&#36164;&#28304;&#23454;&#39564;&#65292;&#35266;&#23519;&#19981;&#30830;&#23450;&#24615;&#22914;&#20309;&#24433;&#21709;&#34701;&#21512;&#36319;&#36394;&#12290;</p>
+          <p class="eyebrow rise-block">&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;</p>
+          <h1 class="rise-word">
+            <span
+              v-for="(character, index) in WORKBENCH_TITLE_CHARACTERS"
+              :key="`workbench-${index}`"
+              class="rise-glyph rise-glyph-cjk"
+              :style="{ animationDelay: `${110 + index * 28}ms` }"
+            >{{ character }}</span>
+          </h1>
+          <p class="lede rise-block" style="--rise-delay: 370ms">&#36816;&#34892;&#21487;&#22797;&#29616;&#30340;&#38647;&#36798;&#36164;&#28304;&#23454;&#39564;&#65292;&#35266;&#23519;&#19981;&#30830;&#23450;&#24615;&#22914;&#20309;&#24433;&#21709;&#34701;&#21512;&#36319;&#36394;&#12290;</p>
         </div>
-        <div class="run-summary"><span class="summary-label">&#36816;&#34892; ID</span><strong>{{ simulation?.runId?.slice(0, 8) ?? '--' }}</strong></div>
+        <div class="run-summary rise-block" style="--rise-delay: 440ms"><span class="summary-label">&#36816;&#34892; ID</span><strong>{{ simulation?.runId?.slice(0, 8) ?? '--' }}</strong></div>
       </section>
 
       <div v-if="authModalOpen" class="auth-overlay" @click.self="authModalOpen = false">
@@ -2133,7 +2252,7 @@ onBeforeUnmount(() => {
       </div>
 
       <section v-if="authUser && activeView === 'workbench'" class="dashboard-grid">
-        <aside class="panel config-panel">
+        <aside class="panel config-panel rise-block" style="--rise-delay: 110ms">
           <div class="panel-heading">
             <div><span class="panel-kicker">01 / &#22330;&#26223;</span><h2>&#23454;&#39564;&#37197;&#32622;</h2></div>
             <button class="ghost-button" :disabled="loadingConfig || loading" @click="loadDefaultConfig">{{ loadingConfig ? '\u52a0\u8f7d\u4e2d...' : '\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f' }}</button>
@@ -2265,7 +2384,7 @@ onBeforeUnmount(() => {
           </div>
         </aside>
 
-        <section class="main-column">
+        <section class="main-column rise-stagger" style="--rise-base: 200ms">
           <div class="metrics-grid">
             <div class="metric-card"><span class="metric-label">&#20301;&#32622;&#35823;&#24046;</span><strong>{{ formatNumber(activeMetrics?.averagePositionError) }}</strong><small>&#24179;&#22343;&#27431;&#27663;&#36317;&#31163;</small></div>
             <div class="metric-card accent-cyan"><span class="metric-label">&#36319;&#36394;&#29575;</span><strong>{{ activeMetrics ? `${formatNumber(activeMetrics.trackingRate * 100, 1)}%` : '--' }}</strong><small>&#34701;&#21512;&#29366;&#24577;&#21344;&#27604;</small></div>
@@ -2363,14 +2482,21 @@ onBeforeUnmount(() => {
       <section v-if="authUser && activeView === 'agent'" class="agent-page">
         <div class="agent-page-hero">
           <div>
-            <p class="eyebrow">FUSIONPILOT / RESEARCH COPILOT</p>
-            <h1>雷达与电子对抗协同助手</h1>
-            <p class="lede">
+            <p class="eyebrow rise-block">FUSIONPILOT / RESEARCH COPILOT</p>
+            <h1 class="rise-word">
+              <span
+                v-for="(character, index) in AGENT_TITLE_CHARACTERS"
+                :key="`agent-title-${index}`"
+                class="rise-glyph rise-glyph-cjk"
+                :style="{ animationDelay: `${110 + index * 26}ms` }"
+              >{{ character }}</span>
+            </h1>
+            <p class="lede rise-block" style="--rise-delay: 430ms">
               多轮对话式协同：Agent 自己读取配置、修改参数、调用仿真并解读指标。仿真事实永远来自 Java 核心，
               需要花费资源的工具会先向你申请确认。
             </p>
           </div>
-          <div class="agent-model-status">
+          <div class="agent-model-status rise-block" style="--rise-delay: 90ms">
             <span class="panel-kicker">ACTIVE MODEL</span>
             <strong>{{ selectedProviderLabel }}</strong>
             <span>{{ selectedModelName }}</span>
@@ -2378,7 +2504,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="agent-model-bar">
+        <div class="agent-model-bar rise-block" style="--rise-delay: 470ms">
           <label class="field model-bar-field">
             <span>提供商</span>
             <select v-model="selectedAgentProvider" @change="handleAgentProviderChange">
@@ -2486,7 +2612,7 @@ onBeforeUnmount(() => {
           </p>
         </div>
 
-        <div class="agent-chat-grid">
+        <div class="agent-chat-grid rise-stagger" style="--rise-base: 560ms">
           <aside class="panel conversation-panel">
             <div class="panel-heading compact">
               <div><span class="panel-kicker">00 / SESSIONS</span><h2>历史对话</h2></div>
@@ -2663,5 +2789,12 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </main>
+
+    <!-- Custom cursor. Rendered only where a hovering pointer exists; `position: fixed` and
+         `pointer-events: none` keep it out of the layout and out of the way of clicks. -->
+    <div v-if="cursorEnabled" class="cursor-layer" aria-hidden="true">
+      <div ref="cursorRingEl" class="cursor-ring"></div>
+      <div ref="cursorDotEl" class="cursor-dot"></div>
+    </div>
   </div>
 </template>

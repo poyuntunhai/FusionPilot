@@ -64,6 +64,18 @@ button:disabled { cursor: wait; opacity: .55; }
 .notice-title { margin: 0 0 4px; color: var(--muted-strong); font-size: 12.5px; font-weight: 650; }
 .notice-item.is-unread .notice-title { color: #f1f7ff; }
 .notice-body { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; }
+/* Custom cursor. `cursor: none` targets <html> and is added by script, so an environment without
+   JS never loses its pointer. On a background this dark a plain outline disappears, which is why
+   both parts carry a glow: cyan against #07111f reads clearly and cannot be mistaken for the chart
+   gridlines. The ring lags the dot (see stepCursor) so movement reads as motion. */
+html.custom-cursor, html.custom-cursor * { cursor: none !important; }
+.cursor-layer { position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
+.cursor-ring, .cursor-dot { position: fixed; top: 0; left: 0; border-radius: 50%; opacity: 0; pointer-events: none; will-change: transform; }
+.cursor-ring { width: 30px; height: 30px; border: 1.5px solid rgba(56, 189, 248, .95); box-shadow: 0 0 12px rgba(56, 189, 248, .7), 0 0 26px rgba(56, 189, 248, .3), inset 0 0 12px rgba(56, 189, 248, .35); transition: width .16s ease, height .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease; }
+.cursor-dot { width: 6px; height: 6px; background: #7dd3fc; box-shadow: 0 0 8px 2px rgba(125, 211, 252, .95), 0 0 20px 6px rgba(56, 189, 248, .5); transition: width .12s ease, height .12s ease, opacity .16s ease; }
+.cursor-ring.is-visible, .cursor-dot.is-visible { opacity: 1; }
+.cursor-ring.is-hot { width: 46px; height: 46px; border-color: #e0f2fe; box-shadow: 0 0 18px rgba(125, 211, 252, .85), 0 0 34px rgba(56, 189, 248, .4), inset 0 0 16px rgba(56, 189, 248, .4); }
+.cursor-ring.is-pressed { width: 22px; height: 22px; box-shadow: 0 0 22px rgba(125, 211, 252, 1), 0 0 40px rgba(56, 189, 248, .55), inset 0 0 14px rgba(56, 189, 248, .5); }
 .workspace { width: min(1440px, 90vw); margin: 0 auto; padding: 54px 0 80px; }
 .landing-hero { min-height: calc(100vh - 180px); display: grid; grid-template-columns: minmax(0, .92fr) minmax(420px, 1.08fr); gap: 50px; align-items: center; padding: 30px 0 80px; }
 .landing-copy { position: relative; z-index: 1; max-width: 650px; }
@@ -86,7 +98,18 @@ button:disabled { cursor: wait; opacity: .55; }
 @keyframes riseIn { from { opacity: 0; transform: translateY(38px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes glyphRise { 0% { opacity: 0; transform: translateY(64px) scale(.86); filter: blur(7px); } 62% { opacity: 1; transform: translateY(-7px) scale(1.02); filter: blur(0); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } }
 @keyframes stageIn { from { opacity: 0; transform: translateY(26px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.rise-block { animation: riseIn .78s cubic-bezier(.2, .9, .25, 1) both; }
+.rise-block { animation: riseIn .78s cubic-bezier(.2, .9, .25, 1) both; animation-delay: var(--rise-delay, 0ms); }
+/* Children of a container cascade in one after another. `--rise-base` shifts the whole group, which
+   is how a nested group is kept from starting while its parent is still half-faded — without it the
+   two opacities multiply and the cascade reads as one muddy fade. */
+.rise-stagger > * { animation: riseIn .7s cubic-bezier(.2, .9, .25, 1) both; }
+.rise-stagger > *:nth-child(1) { animation-delay: var(--rise-base, 0ms); }
+.rise-stagger > *:nth-child(2) { animation-delay: calc(var(--rise-base, 0ms) + 70ms); }
+.rise-stagger > *:nth-child(3) { animation-delay: calc(var(--rise-base, 0ms) + 140ms); }
+.rise-stagger > *:nth-child(4) { animation-delay: calc(var(--rise-base, 0ms) + 210ms); }
+.rise-stagger > *:nth-child(5) { animation-delay: calc(var(--rise-base, 0ms) + 280ms); }
+.rise-stagger > *:nth-child(6) { animation-delay: calc(var(--rise-base, 0ms) + 350ms); }
+.rise-stagger > *:nth-child(n+7) { animation-delay: calc(var(--rise-base, 0ms) + 420ms); }
 .rise-stage { animation: stageIn 1s cubic-bezier(.2, .9, .25, 1) both; animation-delay: 140ms; }
 .landing-eyebrow.rise-block { animation-delay: 40ms; }
 .landing-lede.rise-block { animation-delay: 1060ms; }
@@ -601,6 +624,7 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
    everything already in place; `animation: none` also cancels the `both` fill that hides elements
    during their delay, so nothing can get stuck invisible. */
 @media (prefers-reduced-motion: reduce) {
-  .rise-block, .rise-stage, .rise-glyph { animation: none; }
+  .rise-block, .rise-stage, .rise-glyph, .rise-stagger > * { animation: none; }
   .notice-dot { animation: none; }
+  .cursor-ring, .cursor-dot { transition: none; }
 }

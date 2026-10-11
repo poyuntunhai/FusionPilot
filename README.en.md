@@ -1,3 +1,5 @@
+**This site is live: <https://fusionpilot.cn>**
+
 # FusionPilot · Radar & ECM Simulation Lab with an LLM Agent
 
 > A digital lab where a **radar multi-source fusion / resource-scheduling simulation core** and an **LLM agent that designs and runs its own experiments** live side by side.
