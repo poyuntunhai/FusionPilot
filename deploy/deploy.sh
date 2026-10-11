@@ -123,10 +123,10 @@ if [[ "$ONLY" != "backend" && "$ONLY" != "agent" ]]; then
   step "Build frontend"
   cd "$REPO_ROOT/web"
   # Vite empties the output directory itself, but doing it here keeps the build honest: the result
-  # can never be a mix of this build and a stale one. Guarded on existence so a first-ever deploy
-  # does not run a recursive delete against a path that was never there.
-  if [[ -d "$REPO_ROOT/web/dist" ]]; then
-    rm -rf "$REPO_ROOT/web/dist"
+  # can never be a mix of this build and a stale one. Relative path on purpose — an absolute
+  # /d/... path is a POSIX-style path that Windows-level delete hooks cannot resolve.
+  if [[ -d dist ]]; then
+    rm -rf dist
   fi
   npm run build
   [[ -f "$REPO_ROOT/web/dist/index.html" ]] || { echo "error: web/dist/index.html missing after build" >&2; exit 1; }
