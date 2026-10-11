@@ -364,16 +364,25 @@ mysql -e 'DROP DATABASE fusionpilot_restore_test;'
 ### 最重要的一条：备份必须离开这台机器
 
 **同机备份等于没有备份**——机器丢了、磁盘坏了、误删了，两者一起没。
-定时任务只负责"在服务器上生成"，**把它拉走需要你在自己电脑上做**：
+现在有了现成的拉取脚本（`deploy/backup/pull-backups.sh` / Windows 双击入口 `pull-backups.cmd`）：
 
 ```bash
-# 在本地执行，把服务器上的备份同步到本机目录
-mkdir -p ~/fusionpilot-backups
-scp -i ~/.ssh/<你的私钥> root@<服务器IP>:'/var/backups/fusionpilot/*.sql.gz' ~/fusionpilot-backups/
+# 方式一：Git Bash 里跑（可反复执行，已拉过的自动跳过）
+bash deploy/backup/pull-backups.sh
+
+# 方式二：Windows 直接双击 deploy\backup\pull-backups.cmd
 ```
 
-（更好的做法是传到对象存储或另一台机器；`scp` 到本地至少保证"服务器没了数据还在你手上"。
-另外注意：**拉到本地只是备份，本机磁盘挂了同样会没** —— 重要的东西建议再往网盘/对象存储放一份。）
+- 备份落到本机 `C:\Users\<你>\FusionPilot-backups\`，本地保留 30 份；
+- 每个文件拉下来都做**解压校验**（gzip 尾部必须有 `Dump completed`），坏了删掉下次重拉；
+- 脚本从被 gitignore 的 `deploy/.deploy.env` 读主机信息，**不含真实地址，可提交**。
+
+**建议节奏**：每周双击一次足够（数据库目前每天只变化一点点；数据多起来后改每周两次或上对象存储）。
+
+> 更稳的做法是把备份再传一份到对象存储（如阿里云 OSS）或另一台机器；
+> 拉到本地已保证"服务器没了数据还在你手上"，但本机磁盘挂了同样会没——重要的东西建议三处存。
+> 注意 `.sql.gz` 是 **gzip 压缩的 SQL 文本，不是 tar 包**：校验用 `gzip -t`，
+> `tar -tzf` 会把每个完好的文件都误判成损坏（Windows 自带的 bsdtar 也不例外）。
 
 ### 临时手动导出一份（不想用脚本时）
 
@@ -386,7 +395,7 @@ ssh -i ~/.ssh/<你的私钥> root@<服务器IP> \
 `--single-transaction` 让导出不锁表（InnoDB），线上跑着也能安全备份。
 
 > 注意：定时备份落在**同一台机器的系统盘**上。磁盘坏了、机器被重置，备份跟着一起没。
-> 真正的备份必须离开这台机器——至少每周手动下载一次。
+> 真正的备份必须离开这台机器——用上面的 `pull-backups` 脚本拉回本机，至少每周一次。
 
 ---
 
