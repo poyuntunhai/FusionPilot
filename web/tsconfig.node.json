@@ -6,7 +6,8 @@
     "moduleResolution": "Bundler",
     "verbatimModuleSyntax": true,
     "strict": true,
-    "types": ["node"]
+    "types": ["node"],
+    "noEmit": true
   },
   "include": ["vite.config.ts"]
 }

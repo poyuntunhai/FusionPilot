@@ -22,6 +22,11 @@ web/node_modules/
 web/dist/
 web/.tmp/
 
+# Compiled twin of vite.config.ts. It is emitted by `vue-tsc -b` when noEmit is missing, and
+# because Vite resolves vite.config.js BEFORE vite.config.ts it silently shadows the real config.
+# noEmit is set now; this is here so a stray emit can never be committed again.
+web/vite.config.js
+
 # Local configuration and generated data
 .env
 data/
