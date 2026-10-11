@@ -2,6 +2,7 @@ package com.fusionpilot.backend.api;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -14,6 +15,14 @@ class SystemControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
+    /**
+     * Compared against the configured property instead of a literal so that bumping the version
+     * does not require editing this test. It still fails if the controller reads the wrong key:
+     * the two sides would then disagree.
+     */
+    @Value("${fusionpilot.version}")
+    private String configuredVersion;
+
     @Test
     void healthReturnsUpStatus() throws Exception {
         mockMvc.perform(get("/api/v1/system/health"))
@@ -24,9 +33,9 @@ class SystemControllerTest {
     }
 
     @Test
-    void versionReturnsVersion() throws Exception {
+    void versionReturnsTheConfiguredVersion() throws Exception {
         mockMvc.perform(get("/api/v1/system/version"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.version").value("0.1.0-SNAPSHOT"));
+                .andExpect(jsonPath("$.data.version").value(configuredVersion));
     }
 }

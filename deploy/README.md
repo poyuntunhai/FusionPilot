@@ -124,8 +124,8 @@ cd web && npm ci && npm run build && cd ..
 # 后端（Windows 必须用 mvnw.cmd；在 Git Bash 里跑 ./mvnw 会失败）
 cd backend && ./mvnw.cmd -DskipTests package && cd ..
 
-# 自检：两个产物都在
-ls -lh backend/target/fusionpilot-backend-0.1.0-SNAPSHOT.jar
+# 自检：两个产物都在（jar 名字带版本号，用通配符免得每次发版都要改文档）
+ls -lh backend/target/fusionpilot-backend-*.jar
 ls web/dist/index.html
 ```
 
@@ -140,7 +140,7 @@ scp /tmp/fp-src.tgz $HOST:/tmp/
 ssh $HOST 'tar -xzf /tmp/fp-src.tgz -C /opt/fusionpilot/'
 
 # Java 产物
-scp backend/target/fusionpilot-backend-0.1.0-SNAPSHOT.jar $HOST:/opt/fusionpilot/backend/app.jar
+scp backend/target/fusionpilot-backend-*.jar $HOST:/opt/fusionpilot/backend/app.jar
 
 # 前端产物
 tar -czf /tmp/fp-web.tgz -C web dist

@@ -405,11 +405,11 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
 
 中间怎么盯进度（不必一直手动查）：跑个定时任务每小时 `nslookup`，生效了通知自己。
 
-### 本机实际情况（2026-10-11 已完成，供参考）
+### 走完这一遍之后，你会拥有（对照检查用）
 
-- 域名 **`fusionpilot.cn`**，注册商阿里云（万网），A 记录 `@` / `www` → `43.108.33.193`
-- 证书由 **Let's Encrypt** 签发，`/etc/letsencrypt/live/fusionpilot.cn/`，**到期 2027-01-09**
-- 续期是全自动的：安装时创建了 **`certbot.timer`**，systemd 每 12 小时跑一次，
+- 域名 `<你的域名>`，A 记录 `@` / `www` → `<服务器公网 IP>`
+- 证书由 **Let's Encrypt** 签发，落在 `/etc/letsencrypt/live/<你的域名>/`，**有效期 90 天**
+- 续期是全自动的：装 certbot 时会创建 **`certbot.timer`**，systemd 每 12 小时跑一次，
   只在剩余不足 30 天时真正续。查状态：
 
   ```bash
@@ -417,16 +417,21 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
   sudo certbot renew --dry-run        # 演练一次续期，验证配置没坏
   ```
 
-- 改 nginx 前的配置备份留在服务器 **`/root/fusionpilot.nginx.bak`**（回滚就直接 cp 回去再 reload）
+- 改 nginx 前的配置备份自己留一份（`cp /etc/nginx/sites-available/<站点> /root/<站点>.nginx.bak`），
+  回滚就是 cp 回去再 reload
 - certbot 在 80 端口那个 server 块里加了「按 host 301 到 https」，并在末尾 `return 404`，
   这样别的域名扫到这台机器不会被当成正常站点——**这是 certbot 的正常产物，别删**
 - 证书签发后自测（本地执行）：
 
   ```bash
-  curl -sI http://fusionpilot.cn/  | head -1     # 301，Location: https://fusionpilot.cn/
-  curl -sI https://fusionpilot.cn/ | head -1     # 200
-  curl -s -o /dev/null -w "%{http_code}\n" https://fusionpilot.cn/api/v1/auth/captcha   # 200，证明反代通
+  curl -sI  http://<你的域名>/  | head -1    # 301，Location: https://<你的域名>/
+  curl -sI  https://<你的域名>/ | head -1    # 200
+  curl -sI  https://<你的域名>/api/v1/system/health | head -1   # 200，证明反代通
   ```
+
+  > 用 `-I`（HEAD）而不是 `-o /dev/null`：Windows 的 Git Bash 里 `curl -o /dev/null` 会把
+  > `/dev/null` 当成路径交给原生 curl.exe，**退出码恒为 23**（虽然 `-w` 输出的码是对的）。
+  > 放进 `&&` 串里会莫名其妙地中断。
 
 ---
 
@@ -440,7 +445,7 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
 
 ```bash
 cd <仓库目录>
-./deploy/deploy.sh --host root@43.108.33.193 --domain fusionpilot.cn
+./deploy/deploy.sh --host root@<服务器IP> --domain <你的域名>
 ```
 
 它按顺序做完：构建后端 jar → 构建前端 → 上传 jar（**旧版自动备份成 `app.jar.prev`**）→

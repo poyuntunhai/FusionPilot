@@ -13,7 +13,7 @@
 | 组件 | 技术栈 | 构建产物 | 启动方式 |
 |---|---|---|---|
 | 前端 | Vue 3 + Vite + TypeScript | `web/dist/`（静态文件） | `npm run build` 后由 Nginx 托管 |
-| 后端 | Java 17 + Spring Boot | `backend/target/fusionpilot-backend-0.1.0-SNAPSHOT.jar` | `java -jar ... --spring.profiles.active=mysql` |
+| 后端 | Java 17 + Spring Boot | `backend/target/fusionpilot-backend-<版本>.jar` | `java -jar ... --spring.profiles.active=mysql` |
 | Agent 服务 | Python 3.11+（本地 3.11） + FastAPI | 源码 + `requirements.txt` | `uvicorn app.main:app --host 0.0.0.0 --port 8000` |
 | 数据库 | MySQL 8.x | — | 本地 `fp_simulation_run` 等表 |
 

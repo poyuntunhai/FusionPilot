@@ -11,7 +11,8 @@ Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视
 [![Agent tests](https://img.shields.io/badge/Agent%20tests-210%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
-> **小白第一次 vibe 的产物，已部署上线：<https://fusionpilot.cn>**（免备案机器 + Let's Encrypt，证书自动续期）。
+> **小白第一次 vibe 的产物，已部署上线并在持续迭代**（免备案机器 + Nginx + Let's Encrypt，
+> 一条命令的部署脚本和运维手册见 [`deploy/`](deploy/)）。
 > 欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！
 
 ![首页](docs/images/landing.png)

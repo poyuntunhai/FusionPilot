@@ -10,7 +10,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class SystemController {
     private final String version;
 
-    public SystemController(@Value("${fusionpilot.version:0.1.0-SNAPSHOT}") String version) {
+    // The value in application.yml is the source of truth; this literal is only the fallback for
+    // the case where the property is missing entirely. Both are bumped together with pom.xml.
+    public SystemController(@Value("${fusionpilot.version:0.2.0}") String version) {
         this.version = version;
     }
 
