@@ -82,8 +82,10 @@ if [[ ! -f "$DEPLOY_SSH_KEY" ]]; then
   exit 1
 fi
 
-SSH=(ssh -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new "$DEPLOY_HOST")
-SCP=(scp -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new)
+SSH=(ssh -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new
+     -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "$DEPLOY_HOST")
+SCP=(scp -i "$DEPLOY_SSH_KEY" -o StrictHostKeyChecking=accept-new
+     -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
 step() { printf '\n\033[36m==> %s\033[0m\n' "$1"; }
 note() { printf '    %s\n' "$1"; }
@@ -102,9 +104,31 @@ if [[ -n "${JAVA_HOME:-}" ]]; then
 else
   note "WARNING: JAVA_HOME is unset; the Maven wrapper will fall back to whatever 'java' is on PATH."
 fi
+
+# Connectivity is checked separately from the directory layout, because a reset connection and a
+# missing install directory look nothing alike to the person reading the output — the first version
+# of this script blamed a missing /opt/<app> when the real problem was a dropped ssh connection.
+# Three attempts: a single transient reset should not abort a deploy. Note that the options live in
+# the SSH array and are never appended after the host — everything after the host is the remote
+# command, so `ssh host -o Foo=bar true` silently tries to run "-o" on the far side.
+connected=0
+for attempt in 1 2 3; do
+  if "${SSH[@]}" true 2>/dev/null; then
+    connected=1
+    break
+  fi
+  [[ "$attempt" == "3" ]] || { note "ssh attempt $attempt failed, retrying"; sleep 3; }
+done
+[[ "$connected" == "1" ]] \
+  || { echo "error: cannot ssh to $DEPLOY_HOST. Check that the host is up, that $DEPLOY_SSH_KEY is the right key, and that the network is not dropping the connection." >&2; exit 1; }
+note "ssh ok"
+
 "${SSH[@]}" "test -d '$DEPLOY_APP_ROOT/backend' && test -d '$DEPLOY_APP_ROOT/web'" \
   || { echo "error: $DEPLOY_APP_ROOT/backend or /web is missing on the host. Run deploy/bootstrap.sh first." >&2; exit 1; }
-note "host reachable, $DEPLOY_APP_ROOT present"
+note "$DEPLOY_APP_ROOT present"
+
+# Nothing is live until the restart step at the very end, so a failure anywhere above leaves the
+# previous version running. Re-running the script after fixing the cause is safe.
 
 # ------------------------------------------------------------------ build
 if [[ "$ONLY" != "web" && "$ONLY" != "agent" ]]; then
