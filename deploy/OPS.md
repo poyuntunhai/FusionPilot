@@ -239,6 +239,74 @@ UPDATE fp_user SET role = 'ADMIN' WHERE username = '<你自己的用户名>';
 > 小坑：在 Windows 的 Git Bash 里跑 `mysql` 命令行客户端时，**中文列名会显示成乱码**——
 > 那是终端编码问题，不是数据库问题。DataGrip 里不会出现。
 
+---
+
+### 发布一条系统消息（网站顶栏的铃铛）
+
+网页顶栏那个铃铛里的内容就是这张表，**发版公告、维护通知都从这里发**。
+
+| 表 | 存什么 |
+|---|---|
+| `fp_system_message` | 消息本体：`title` / `body` / `version` / `level` / `published_at` |
+| `fp_system_message_read` | 已读回执：每个 (消息, 用户) 一行，知道谁读过 |
+
+**最省事的发法——直接在 DataGrip 里 INSERT 一行，前端不用重新部署：**
+
+```sql
+INSERT INTO fp_system_message (title, body, version, level)
+VALUES ('融合算法对比新增卡尔曼滤波',
+        '对比页现在支持三种融合方法同屏比较。',
+        '0.3.0',
+        'UPDATE');
+```
+
+`version` 和 `level` 可以不写（`NULL` / 默认 `INFO`）。`level` 三选一，决定标签样式：
+
+| `level` | 前端显示 |
+|---|---|
+| `INFO`（默认） | 「通知」 |
+| `UPDATE` | 「版本更新」 |
+| `WARNING` | 「重要」（琥珀色，用于维护/故障） |
+
+**想定时发布**：把 `published_at` 写成将来的时间，**到点之前任何人都看不到**，到点自动出现。
+写入时**不用带时区**，按服务器本地时间（CST）理解：
+
+```sql
+INSERT INTO fp_system_message (title, body, version, level, published_at)
+VALUES ('计划维护', '本周日 02:00–03:00 停机维护。', NULL, 'WARNING', '2026-10-18 09:00:00');
+```
+
+**发错了就改或删**（`fp_system_message_read` 会跟着级联删掉，已读状态一起没）：
+
+```sql
+UPDATE fp_system_message SET body = '……' WHERE message_id = ?;
+DELETE FROM fp_system_message WHERE message_id = ?;
+```
+
+**不写 SQL 的替代方案**是调接口（需要 ADMIN，提权方式同上）：
+
+```bash
+BASE="https://<你的域名>"
+# 1. 取 token（登录接口要过一道算术验证码，见 /api/v1/auth/captcha）
+TOKEN='<登录拿到的 accessToken>'
+
+# 2. 发布，返回新消息的 messageId
+curl -s -X POST "$BASE/api/v1/system/messages" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"版本更新","body":"……","version":"0.3.0","level":"UPDATE"}'
+
+# 3. 看看发布后的列表（不带 token 也看得到，只是 read 恒为 false）
+curl -s "$BASE/api/v1/system/messages"
+```
+
+**红点的机制**，看数据就能明白：
+
+- `GET /api/v1/system/messages` **不需要登录**——铃铛在首页（未登录）也要能用。
+- 登录用户的 `read` 由 `fp_system_message_read` 决定，**换设备、换浏览器都保持一致**。
+- 未登录访客没有回执可记，已读状态存在浏览器本地，所以**新访客/换了浏览器会再看到红点**——
+  这是设计如此，不是 bug。
+- 消息是**广播**：一行对所有人生效，没有"给某个用户单独发消息"的能力。
+
 ## 三、备份
 
 **一次性导出**（在你自己的电脑上执行，结果直接落到本地，天然"离开服务器"）：
@@ -359,3 +427,63 @@ mysql fusionpilot < fusionpilot-2026-10-09.sql
   curl -sI https://fusionpilot.cn/ | head -1     # 200
   curl -s -o /dev/null -w "%{http_code}\n" https://fusionpilot.cn/api/v1/auth/captcha   # 200，证明反代通
   ```
+
+---
+
+## 六、改完代码怎么让线上更新
+
+**先说结论：不会自动同步。** 线上跑的是服务器上的那份构建产物，你在本地改代码，
+**除非重新构建并上传，线上永远是旧的**。所以"像很多网站那样持续更新"这件事，
+全靠下面这条命令。
+
+### 一条命令的事
+
+```bash
+cd <仓库目录>
+./deploy/deploy.sh --host root@43.108.33.193 --domain fusionpilot.cn
+```
+
+它按顺序做完：构建后端 jar → 构建前端 → 上传 jar（**旧版自动备份成 `app.jar.prev`**）→
+上传前端（先清空 `assets/`，避免旧的哈希文件堆积）→ 从 `git archive HEAD` 同步 `agent-service`
+（**服务器上的 `.venv` 不会被碰**）→ 改属主 → 重启两个 systemd 单元 → **健康检查**
+（后端 / agent / 首页各探一次，任何一步不过就返回非零退出码并打印排查命令）。
+
+**健康检查失败会报错退出**——不会出现"脚本说成功、网站其实打不开"这种情况。
+
+不想每次敲 IP 和域名，就建一个本地配置文件（**已在 `.gitignore` 里，不会进仓库**）：
+
+```bash
+cp deploy/.deploy.env.example deploy/.deploy.env
+# 填 DEPLOY_HOST / DEPLOY_DOMAIN / DEPLOY_SSH_KEY，之后直接 ./deploy/deploy.sh
+```
+
+常用开关：
+
+| 开关 | 用途 |
+|---|---|
+| `--only backend` / `--only web` / `--only agent` | 只更一部分（改一行前端文案就不必重建后端） |
+| `--with-tests` | 先跑 `mvn test` 再打包 |
+| `--no-restart` | 只上传不重启（想自己控制重启时机时用） |
+
+### 出问题怎么退回去
+
+后端留了上一版：
+
+```bash
+ssh -i ~/.ssh/id_ed25519 root@<IP> \
+  'cd /opt/fusionpilot/backend && mv app.jar.prev app.jar && systemctl restart fusionpilot-backend'
+```
+
+前端没有自动备份（`dist` 是纯构建产物），**回退就是回到旧提交重新跑一次 `deploy.sh`**。
+所以**上线前先 `git commit`**，否则没有可回退的点。
+
+### 三个会咬人的地方
+
+- **`agent-service` 是按 `HEAD` 同步的**，没提交的改动不会被发上去。脚本会检测到并打印警告，
+  但不会替你提交。
+- **`web/dist` 与 `backend/target` 都是构建产物，不进 git**，服务器上也没有源码，
+  所以**只能在本地构建**——这也是脚本刻意不在服务器上装 Maven/Node 的原因（1.6G 机器跑构建会很难受）。
+- **只改了 `schema.sql`（加表/加列）时**，部署会自动生效：后端每次启动都执行 `schema.sql`，
+  里面全是 `create table if not exists`，重复执行安全。但**老库上的列变更不会自动加**——
+  那种情况要么手写 `ALTER TABLE`，要么参考 `docs/mysql/migrations/`（那套脚本只用于升级老库，
+  **全新部署不要跑**，会报 Duplicate column）。

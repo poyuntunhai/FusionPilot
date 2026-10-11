@@ -36,6 +36,34 @@ button:disabled { cursor: wait; opacity: .55; }
 .topbar-action.active { border-color: var(--cyan); color: var(--cyan); background: rgba(56, 189, 248, .08); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #45d483; box-shadow: 0 0 12px #45d483; }
 .status-divider { width: 1px; height: 12px; background: var(--line); }
+.notice-center { position: relative; display: flex; align-items: center; }
+.notice-bell { position: relative; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid #31506d; color: var(--muted-strong); background: transparent; }
+.notice-bell svg { width: 14px; height: 14px; }
+.notice-bell:hover { border-color: var(--cyan); color: var(--cyan); }
+.notice-bell.active { border-color: var(--cyan); color: var(--cyan); background: rgba(56, 189, 248, .08); }
+.notice-bell.unread { border-color: rgba(244, 63, 94, .5); color: #fca5a5; }
+@keyframes noticePulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: .7; } }
+.notice-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: #f43f5e; box-shadow: 0 0 0 2px var(--bg), 0 0 10px #f43f5e; animation: noticePulse 1.8s ease-in-out infinite; }
+/* .topbar-status sets uppercase + .14em tracking for its own label spans; a message body has to
+   opt back out of both or Chinese copy ends up letter-spaced like a heading. */
+.notice-panel { position: absolute; top: calc(100% + 10px); right: 0; z-index: 30; width: min(360px, calc(100vw - 32px)); max-height: 62vh; overflow-y: auto; padding: 12px; border: 1px solid var(--line); letter-spacing: normal; text-align: left; text-transform: none; background: var(--panel); box-shadow: 0 20px 60px rgba(0, 0, 0, .5); }
+.notice-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+.notice-mark-all { border: 0; padding: 0; color: var(--cyan); background: transparent; font-size: 10px; letter-spacing: .04em; }
+.notice-mark-all:hover { text-decoration: underline; }
+.notice-empty { margin: 16px 0; color: var(--muted); font-size: 12px; text-align: center; }
+.notice-list { margin: 0; padding: 0; list-style: none; }
+.notice-item { padding: 11px 10px; border-bottom: 1px solid rgba(32, 48, 71, .6); cursor: pointer; }
+.notice-item:last-child { border-bottom: 0; }
+.notice-item:hover { background: rgba(56, 189, 248, .06); }
+.notice-item.is-unread { box-shadow: inset 2px 0 0 var(--cyan); }
+.notice-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.notice-level { padding: 1px 6px; border: 1px solid #31506d; color: var(--cyan); font-size: 9px; letter-spacing: .1em; }
+.notice-item.level-warning .notice-level { border-color: rgba(251, 191, 36, .5); color: var(--amber); }
+.notice-version { color: var(--violet); font-size: 10px; }
+.notice-time { margin-left: auto; color: var(--muted); font-size: 10px; }
+.notice-title { margin: 0 0 4px; color: var(--muted-strong); font-size: 12.5px; font-weight: 650; }
+.notice-item.is-unread .notice-title { color: #f1f7ff; }
+.notice-body { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; }
 .workspace { width: min(1440px, 90vw); margin: 0 auto; padding: 54px 0 80px; }
 .landing-hero { min-height: calc(100vh - 180px); display: grid; grid-template-columns: minmax(0, .92fr) minmax(420px, 1.08fr); gap: 50px; align-items: center; padding: 30px 0 80px; }
 .landing-copy { position: relative; z-index: 1; max-width: 650px; }
@@ -52,6 +80,22 @@ button:disabled { cursor: wait; opacity: .55; }
 .landing-facts div { min-width: 86px; padding-left: 12px; border-left: 1px solid #31506d; }
 .landing-facts strong { display: block; color: var(--cyan); font-size: 22px; font-weight: 650; }
 .landing-facts span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+/* Landing copy rises into place. The headline uses the per-glyph variant so it assembles itself
+   letter by letter; the block variant is for everything that should arrive as a single line.
+   `both` fill mode matters: without it the element is visible during its animation-delay. */
+@keyframes riseIn { from { opacity: 0; transform: translateY(38px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes glyphRise { 0% { opacity: 0; transform: translateY(64px) scale(.86); filter: blur(7px); } 62% { opacity: 1; transform: translateY(-7px) scale(1.02); filter: blur(0); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } }
+@keyframes stageIn { from { opacity: 0; transform: translateY(26px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.rise-block { animation: riseIn .78s cubic-bezier(.2, .9, .25, 1) both; }
+.rise-stage { animation: stageIn 1s cubic-bezier(.2, .9, .25, 1) both; animation-delay: 140ms; }
+.landing-eyebrow.rise-block { animation-delay: 40ms; }
+.landing-lede.rise-block { animation-delay: 1060ms; }
+.landing-actions.rise-block { animation-delay: 1150ms; }
+.landing-facts.rise-block { animation-delay: 1240ms; }
+/* inline-block is what makes transform apply at all; the h1's negative letter-spacing still adds up
+   to the same width because each span holds exactly one character. */
+.rise-glyph { display: inline-block; animation: glyphRise .92s cubic-bezier(.22, 1.02, .3, 1) both; }
+.rise-glyph-cjk { animation-duration: .78s; }
 .radar-stage { position: relative; min-height: 560px; overflow: hidden; border: 1px solid #1f3854; background: #081523; box-shadow: 0 22px 70px rgba(0, 0, 0, .22); }
 .radar-stage::before, .radar-stage::after { position: absolute; content: ""; pointer-events: none; }
 .radar-stage::before { top: 50%; left: 24px; right: 24px; height: 1px; background: rgba(56, 189, 248, .08); }
@@ -547,4 +591,12 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
   .agent-model-picker { grid-template-columns: 1fr; }
   .topbar-status { flex-wrap: wrap; justify-content: flex-end; }
   .model-bar-field, .model-bar-key { min-width: 0; flex-basis: 100%; }
+}
+
+/* Entrance animations are decorative. Users who ask the OS for less motion get the same page with
+   everything already in place; `animation: none` also cancels the `both` fill that hides elements
+   during their delay, so nothing can get stuck invisible. */
+@media (prefers-reduced-motion: reduce) {
+  .rise-block, .rise-stage, .rise-glyph { animation: none; }
+  .notice-dot { animation: none; }
 }

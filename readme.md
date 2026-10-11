@@ -7,11 +7,12 @@
 Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视化。三者边界严格，Agent 的每一句结论都必须能追溯到 Java 返回的结构化结果。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Java tests](https://img.shields.io/badge/Java%20tests-45%20passed-brightgreen.svg)](#测试与评测)
+[![Java tests](https://img.shields.io/badge/Java%20tests-51%20passed-brightgreen.svg)](#测试与评测)
 [![Agent tests](https://img.shields.io/badge/Agent%20tests-210%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
-> **小白第一次 vibe 的产物，正在准备部署上线中，欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！**
+> **小白第一次 vibe 的产物，已部署上线：<https://fusionpilot.cn>**（免备案机器 + Let's Encrypt，证书自动续期）。
+> 欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！
 
 ![首页](docs/images/landing.png)
 
@@ -155,6 +156,7 @@ FusionPilot/
 │       ├── simulation/     仿真执行、指标、结果存储
 │       ├── persistence/    MySQL 持久化（运行记录与明细）
 │       ├── account/        注册/登录/验证码/找回密码
+│       ├── notice/         系统消息（顶栏通知铃铛，发布即一次 INSERT）
 │       └── agent/          Agent 会话与长期记忆的存储边界
 ├── agent-service/          Python 3.11 + FastAPI：Agent 编排与 AI 服务
 │   ├── app/
@@ -195,7 +197,7 @@ cd agent-service && python -m evals.run_evals
 cd agent-service && python -m evals.run_evals --group routing \
   --provider zhipu --model glm-4-flash --api-key <你的 token>
 
-# Java 测试（45 个）
+# Java 测试（51 个）
 cd backend && ./mvnw test
 
 # 前端类型检查（注意必须是 -b）

@@ -290,20 +290,28 @@ curl -s --max-time 3 http://你的域名:8000/ || echo "8000 已封闭 ✓"
 
 ## 10. 以后怎么更新
 
-改了代码要重新上线时，只重复第 3 步的构建上传，再加一次重启：
+**改完代码线上不会自动变**：线上跑的是服务器上那份产物，不重新构建并上传，就一直是旧的。
 
 ```bash
-# 本地：重新构建并上传（同第 3 步）
-# 服务器：
-systemctl restart fusionpilot-backend fusionpilot-agent
+# 本地一条命令：构建 → 上传 → 重启 → 健康检查
+./deploy/deploy.sh --host root@你的服务器 --domain 你的域名
+
+# 只改了前端 / 只改了后端
+./deploy/deploy.sh --only web
+./deploy/deploy.sh --only backend
 ```
 
-只改了前端就不必重启服务：
+健康检查不是"成功"两个字，是真的去探三个端点（后端、agent、首页），**任何一步失败就非零退出**
+并打印对应的 `journalctl` 命令。后端旧版会留在服务器 `backend/app.jar.prev`，回退：
 
 ```bash
-# 上传新的 web/dist 后
-systemctl reload nginx      # 其实是可选的，静态文件是实时读的
+ssh root@你的服务器 'cd /opt/fusionpilot/backend && mv app.jar.prev app.jar \
+  && systemctl restart fusionpilot-backend'
 ```
+
+不建 `deploy/.deploy.env`（见 `.deploy.env.example`）就得每次带 `--host --domain` 两个参数。
+
+**手动做的话**就是重复第 3 步的构建上传，再加一次重启；前端产物是静态文件，改完不必重启服务。
 
 ---
 

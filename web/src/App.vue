@@ -307,6 +307,16 @@ type PasswordResetResponse = {
   message: string
   developmentResetToken: string | null
 }
+type SystemNotice = {
+  messageId: number
+  title: string
+  body: string
+  version: string | null
+  level: string
+  publishedAt: string
+  /** Filled in by the backend per user. Always false for anonymous visitors. */
+  read: boolean
+}
 type AgentView = 'workbench' | 'agent'
 type AgentToolName =
   | 'validate_experiment'
@@ -549,8 +559,12 @@ function pickModel(name: string) {
   closeModelDropdown()
 }
 function onDocumentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (noticePanelOpen.value && !target.closest('.notice-center')) {
+    noticePanelOpen.value = false
+  }
   if (!modelDropdownOpen.value) return
-  if ((event.target as HTMLElement).closest('.model-select')) return
+  if (target.closest('.model-select')) return
   closeModelDropdown()
 }
 
@@ -835,6 +849,8 @@ async function submitAuth() {
       void loadAgentModelStatus()
       void loadSavedHistory()
       void loadConversations()
+      // The token has to be in place first, otherwise the unread flags come back as guest values.
+      void loadSystemNotices()
       authForm.value.password = ''
       authMessage.value = '登录成功。'
     }
@@ -951,6 +967,102 @@ async function logout() {
   activeView.value = 'workbench'
   window.history.pushState({}, '', '/')
   authMessage.value = '已退出登录。'
+}
+
+// ---------------------------------------------------------------- landing hero
+// The headline is animated one glyph at a time, so the text has to reach the template as an array
+// rather than a string. Array.from splits by code point, which keeps any non-BMP character intact.
+const LANDING_WORD_LETTERS = Array.from('FusionPilot')
+const LANDING_TITLE_CHARACTERS = Array.from('一体化雷达与电子对抗系统数字模型')
+
+// ---------------------------------------------------------------- notice board
+// Release notes rendered behind the bell in the top bar. The messages are broadcast to everyone,
+// so the backend stores one row per message plus a read receipt per user. Anonymous visitors have
+// no receipt, so their "seen" list lives in the browser; that is also why a brand new visitor
+// always sees the badge -- there is no way to know they have read anything yet.
+const NOTICE_READ_STORAGE = 'fusionpilot_read_notices'
+const systemNotices = ref<SystemNotice[]>([])
+const noticePanelOpen = ref(false)
+const localReadNoticeIds = ref<number[]>(readStoredNoticeIds())
+
+function readStoredNoticeIds(): number[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(NOTICE_READ_STORAGE) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+function isNoticeRead(notice: SystemNotice) {
+  return notice.read || localReadNoticeIds.value.includes(notice.messageId)
+}
+
+const unreadNoticeCount = computed(
+  () => systemNotices.value.filter((notice) => !isNoticeRead(notice)).length
+)
+
+async function loadSystemNotices() {
+  try {
+    systemNotices.value = await request<SystemNotice[]>('/api/v1/system/messages')
+  } catch {
+    // The notice board is decoration: a backend hiccup must never take the page down with it.
+    systemNotices.value = []
+  }
+}
+
+function toggleNoticePanel() {
+  noticePanelOpen.value = !noticePanelOpen.value
+}
+
+function rememberNoticeLocally(messageId: number) {
+  if (localReadNoticeIds.value.includes(messageId)) return
+  localReadNoticeIds.value = [...localReadNoticeIds.value, messageId]
+  localStorage.setItem(NOTICE_READ_STORAGE, JSON.stringify(localReadNoticeIds.value))
+}
+
+async function markNoticeRead(notice: SystemNotice) {
+  rememberNoticeLocally(notice.messageId)
+  if (notice.read || !authToken.value) return
+  notice.read = true
+  try {
+    await request(`/api/v1/system/messages/${notice.messageId}/read`, { method: 'POST' })
+  } catch {
+    // The UI already shows it as read. A receipt that never reached the server just means the
+    // badge comes back on the next login, which is a harmless failure mode.
+  }
+}
+
+async function markAllNoticesRead() {
+  const unread = systemNotices.value.filter((notice) => !isNoticeRead(notice))
+  if (unread.length === 0) return
+  unread.forEach((notice) => rememberNoticeLocally(notice.messageId))
+  if (!authToken.value) return
+  unread.forEach((notice) => { notice.read = true })
+  await Promise.all(
+    unread.map((notice) =>
+      request(`/api/v1/system/messages/${notice.messageId}/read`, { method: 'POST' }).catch(
+        () => undefined
+      )
+    )
+  )
+}
+
+function noticeLevelLabel(level: string) {
+  if (level === 'UPDATE') return '版本更新'
+  if (level === 'WARNING') return '重要'
+  return '通知'
+}
+
+function formatNoticeTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 // The Java API serializes SchedulingResult from its record components, so the payload
@@ -1818,6 +1930,8 @@ onMounted(async () => {
   window.addEventListener('resize', resizeChart)
   document.addEventListener('click', onDocumentClick)
   loadStoredAgentKey()
+  // Loaded before the token check on purpose: the bell is part of the landing page too.
+  void loadSystemNotices()
   const storedToken = localStorage.getItem('fusionpilot_access_token')
   if (storedToken) {
     try {
@@ -1826,6 +1940,9 @@ onMounted(async () => {
       localStorage.setItem('fusionpilot_user', JSON.stringify(authUser.value))
       void loadAgentModelStatus()
       void loadSavedHistory()
+      // Fetch again now that the token exists, so the read flags come from this account instead of
+      // coming back empty the way they do for a guest.
+      void loadSystemNotices()
       if (activeView.value === 'agent') {
         void loadConversations()
       }
@@ -1867,6 +1984,46 @@ onBeforeUnmount(() => {
       <div class="topbar-status">
         <span class="status-dot"></span><span>&#26412;&#22320;&#20223;&#30495;</span><span class="status-divider"></span><span>JAVA &#26680;&#24515; : 8080</span>
         <span class="status-divider"></span>
+        <div class="notice-center">
+          <button
+            class="notice-bell"
+            :class="{ unread: unreadNoticeCount > 0, active: noticePanelOpen }"
+            :title="unreadNoticeCount > 0 ? `系统消息（${unreadNoticeCount} 条未读）` : '系统消息'"
+            @click="toggleNoticePanel"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8a6 6 0 1 0-12 0c0 7-2 8-2 8h16s-2-1-2-8" />
+              <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+            </svg>
+            <span v-if="unreadNoticeCount > 0" class="notice-dot"></span>
+          </button>
+          <div v-if="noticePanelOpen" class="notice-panel">
+            <div class="notice-panel-head">
+              <span>系统消息</span>
+              <button v-if="unreadNoticeCount > 0" class="notice-mark-all" @click="markAllNoticesRead">
+                全部已读（{{ unreadNoticeCount }}）
+              </button>
+            </div>
+            <p v-if="systemNotices.length === 0" class="notice-empty">暂无系统消息。</p>
+            <ul v-else class="notice-list">
+              <li
+                v-for="notice in systemNotices"
+                :key="notice.messageId"
+                class="notice-item"
+                :class="{ 'is-unread': !isNoticeRead(notice), 'level-warning': notice.level === 'WARNING' }"
+                @click="markNoticeRead(notice)"
+              >
+                <div class="notice-item-head">
+                  <span class="notice-level">{{ noticeLevelLabel(notice.level) }}</span>
+                  <span v-if="notice.version" class="notice-version">v{{ notice.version }}</span>
+                  <span class="notice-time">{{ formatNoticeTime(notice.publishedAt) }}</span>
+                </div>
+                <p class="notice-title">{{ notice.title }}</p>
+                <p class="notice-body">{{ notice.body }}</p>
+              </li>
+            </ul>
+          </div>
+        </div>
         <span v-if="authUser">{{ authUser.displayName || authUser.username }}</span>
         <template v-if="authUser">
           <button class="topbar-action" :class="{ active: activeView === 'workbench' }" @click="navigateTo('workbench')">&#23454;&#39564;&#24037;&#20316;&#21488;</button>
@@ -1883,21 +2040,35 @@ onBeforeUnmount(() => {
     <main class="workspace">
       <section v-if="!authUser" class="landing-hero">
         <div class="landing-copy">
-          <p class="landing-eyebrow">FUSIONPILOT / DIGITAL BATTLESPACE</p>
-          <h1>FusionPilot</h1>
-          <p class="landing-title">&#19968;&#20307;&#21270;&#38647;&#36798;&#19982;&#30005;&#23376;&#23545;&#25239;&#31995;&#32479;&#25968;&#23383;&#27169;&#22411;</p>
-          <p class="landing-lede">&#23558;&#38647;&#36798;&#35266;&#27979;&#12289;&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;&#12289;&#36164;&#28304;&#35843;&#24230;&#19982; Agent &#23454;&#39564;&#21327;&#20316;&#32467;&#21512;&#21040;&#19968;&#20010;&#21487;&#22797;&#29616;&#30340;&#25968;&#23383;&#23454;&#39564;&#23460;&#12290;</p>
-          <div class="landing-actions">
+          <p class="landing-eyebrow rise-block">FUSIONPILOT / DIGITAL BATTLESPACE</p>
+          <h1 class="landing-word">
+            <span
+              v-for="(letter, index) in LANDING_WORD_LETTERS"
+              :key="`letter-${index}`"
+              class="rise-glyph"
+              :style="{ animationDelay: `${140 + index * 46}ms` }"
+            >{{ letter }}</span>
+          </h1>
+          <p class="landing-title">
+            <span
+              v-for="(character, index) in LANDING_TITLE_CHARACTERS"
+              :key="`title-${index}`"
+              class="rise-glyph rise-glyph-cjk"
+              :style="{ animationDelay: `${620 + index * 26}ms` }"
+            >{{ character }}</span>
+          </p>
+          <p class="landing-lede rise-block">&#23558;&#38647;&#36798;&#35266;&#27979;&#12289;&#22810;&#28304;&#20449;&#24687;&#34701;&#21512;&#12289;&#36164;&#28304;&#35843;&#24230;&#19982; Agent &#23454;&#39564;&#21327;&#20316;&#32467;&#21512;&#21040;&#19968;&#20010;&#21487;&#22797;&#29616;&#30340;&#25968;&#23383;&#23454;&#39564;&#23460;&#12290;</p>
+          <div class="landing-actions rise-block">
             <button class="primary-button landing-primary" @click="openAuth('login')">&#36827;&#20837;&#23454;&#39564;&#23460; <span>&rarr;</span></button>
             <button class="landing-link" @click="openAuth('register')">&#21019;&#24314;&#36134;&#21495;</button>
           </div>
-          <div class="landing-facts">
+          <div class="landing-facts rise-block">
             <div><strong>04</strong><span>&#26680;&#24515;&#27169;&#22359;</span></div>
             <div><strong>03</strong><span>&#35266;&#27979;&#28304;</span></div>
             <div><strong>01</strong><span>&#32479;&#19968;&#23454;&#39564;&#24037;&#20316;&#21488;</span></div>
           </div>
         </div>
-        <div class="radar-stage" aria-label="FusionPilot radar visualization">
+        <div class="radar-stage rise-stage" aria-label="FusionPilot radar visualization">
           <div class="radar-grid"></div>
           <div class="radar-scope">
             <div class="radar-ring ring-one"></div>

@@ -30,6 +30,9 @@ data/
 *.log
 runtime*.log
 
+# deploy/deploy.sh target host. Holds a real server address and key path, so it stays local.
+deploy/.deploy.env
+
 # fpx CLI state: holds an access token plus the working experiment configuration
 .fpx/
 

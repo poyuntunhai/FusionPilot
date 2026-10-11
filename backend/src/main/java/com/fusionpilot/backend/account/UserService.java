@@ -128,6 +128,22 @@ public class UserService {
         return user;
     }
 
+    /**
+     * Best-effort identity for endpoints that must also serve anonymous callers (the public notice
+     * board, for example). A missing, malformed or expired token yields null instead of a 401, so a
+     * logged-out visitor still gets the content -- just without the per-user extras.
+     */
+    public AuthenticatedUser optionalUser(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        try {
+            return authenticateBearer(authorization);
+        } catch (UnauthorizedException exception) {
+            return null;
+        }
+    }
+
     public void logout(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             return;

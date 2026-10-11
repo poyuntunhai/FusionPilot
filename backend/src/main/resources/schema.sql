@@ -233,3 +233,35 @@ create table if not exists fp_agent_memory (
         foreign key (user_id) references fp_user(user_id)
         on delete cascade
 );
+
+-- In-app notice board: release notes and maintenance announcements shown behind the bell in the
+-- top bar. A message is broadcast to everybody, so it is a single row here; per-user read state
+-- lives in fp_system_message_read. Publishing is one INSERT, which is the point -- an operator can
+-- announce a release from a SQL client without rebuilding or redeploying the frontend.
+-- published_at may be in the future, so a release note can be written ahead of time and will only
+-- start showing once that moment passes.
+create table if not exists fp_system_message (
+    message_id bigint primary key auto_increment,
+    title varchar(200) not null,
+    body varchar(2000) not null,
+    version varchar(60) null,
+    level varchar(20) not null default 'INFO',
+    published_at timestamp not null default current_timestamp,
+    created_at timestamp not null default current_timestamp,
+    index idx_system_message_published (published_at)
+);
+
+-- Read receipts, not message copies: one row per (message, user) pair that has been opened.
+-- Keeps the unread badge consistent across devices, which localStorage alone cannot do.
+create table if not exists fp_system_message_read (
+    message_id bigint not null,
+    user_id bigint not null,
+    read_at timestamp not null default current_timestamp,
+    primary key (message_id, user_id),
+    constraint fk_system_message_read_message
+        foreign key (message_id) references fp_system_message(message_id)
+        on delete cascade,
+    constraint fk_system_message_read_user
+        foreign key (user_id) references fp_user(user_id)
+        on delete cascade
+);
