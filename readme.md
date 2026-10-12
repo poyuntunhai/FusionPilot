@@ -10,7 +10,7 @@ Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Java tests](https://img.shields.io/badge/Java%20tests-65%20passed-brightgreen.svg)](#测试与评测)
-[![Agent tests](https://img.shields.io/badge/Agent%20tests-210%20passed-brightgreen.svg)](#测试与评测)
+[![Agent tests](https://img.shields.io/badge/Agent%20tests-217%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
 > **小白第一次 vibe 的产物，欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！**
@@ -162,17 +162,18 @@ FusionPilot/
 │       └── agent/          Agent 会话与长期记忆的存储边界
 ├── agent-service/          Python 3.11 + FastAPI：Agent 编排与 AI 服务
 │   ├── app/
-│   │   ├── agent_graph.py  LangGraph 编排：主管 + 专员（含 analyst 解读角色）
+│   │   ├── agent_graph.py  LangGraph 编排：主管 + 技能注册表驱动的专员
 │   │   ├── agent_loop.py   工具调用循环与确认门
 │   │   ├── domain_tools.py 工具定义、执行与权限边界
 │   │   ├── reflection.py   两层自检（确定性检查 + 模型审校）
 │   │   ├── knowledge.py    领域知识检索（BM25，零依赖）
 │   │   ├── model_gateway.py 供应商无关的模型调用（OpenAI/Anthropic 双协议）
 │   │   ├── result_analysis.py 结构化解读与指标过滤
+│   │   ├── skills/         技能注册表：专员的路由/提示词/工具权限集中一处定义
 │   │   └── ...             会话、工具、Java 客户端、记忆
 │   ├── knowledge/          领域知识库（7 文档 / 42 小节）
 │   ├── evals/              评测集（用例 + 执行器 + 评分器 + 报告）
-│   └── tests/              210 个测试 + 6 个 HTTP 端到端脚本
+│   └── tests/              217 个测试 + 6 个 HTTP 端到端脚本
 ├── web/                    Vue 3 + TypeScript + Vite：可视化
 ├── docs/
 │   ├── images/             README 用的界面截图
@@ -189,7 +190,7 @@ FusionPilot/
 ## 测试与评测
 
 ```bash
-# Agent 单元测试（210 个）
+# Agent 单元测试（217 个）
 cd agent-service && python -m pytest tests
 
 # 评测集（17 个用例，0.4 秒，离线，脚本模型）

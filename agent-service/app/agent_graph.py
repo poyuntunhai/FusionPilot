@@ -79,27 +79,24 @@ from .reflection import (
     reflect_on_result,
 )
 from .result_analysis import analyze_result, analyze_with_model
+from .skills import (
+    CLARIFY,
+    CONCEPT_QA,
+    CONCEPT_SYSTEM_PROMPT,
+    EXPERIMENT,
+    EXPLORE,
+    PLANNER_SYSTEM_PROMPT,
+    ROUTED_ACTIONS,
+    SKILLS,
+)
 
 
-# The router decides which node handles the user's message. The actions map onto the reference
-# project's intent split (there: answer / query / clarify), plus an exploratory route that designs
-# a multi-step experiment rather than executing a single action.
-CONCEPT_QA = "concept_qa"
-EXPERIMENT = "experiment"
-EXPLORE = "explore"
-CLARIFY = "clarify"
-
-ROUTED_ACTIONS = frozenset({CONCEPT_QA, EXPERIMENT, EXPLORE, CLARIFY})
-
-# Which specialist each route hands the turn to. Named separately from the route because they answer
-# different questions: the route is *what the user wants*, the role is *who does the work*. The role
-# name travels in the event payload so the coordination is legible in the trail without reading code.
-SPECIALISTS = {
-    CONCEPT_QA: "responder",
-    EXPERIMENT: "executor",
-    EXPLORE: "planner",
-    CLARIFY: "clarifier",
-}
+# The routes, the specialists they hand off to, and each specialist's prompt and tool surface all
+# come from app.skills — one Skill per specialist, defined in one place. They are re-exported from
+# here because this module is where the graph and its callers have always imported them. The route
+# is *what the user wants*, the role is *who does the work*, and the role name travels in the event
+# payload so the coordination is legible in the stored trail without re-deriving it from the code.
+SPECIALISTS = SKILLS.routes()
 
 # Why the supervisor routed this way. The model is asked for its own one-line reason; these are the
 # fallbacks, used on rule mode, on a failed call, and whenever the model's reason is missing — a
@@ -112,42 +109,11 @@ ROUTING_FALLBACK = {
 }
 
 
-# NOTE: the phrase "意图路由" is a wire contract, not decoration. The stub provider used by the
-# end-to-end scripts and the tests recognises a supervisor call by it, so it has to stay in this
-# prompt; a self-describing phrase would be better than a keyword, but the alternative is a marker
-# the prompt never uses at all (which is what the knowledge/analysis block headers do).
-CLASSIFY_SYSTEM_PROMPT = """你是 FusionPilot（一体化雷达与电子对抗仿真平台）智能助手的主管（supervisor），负责意图路由与分派。你要判断用户这句话该交给团队里哪位专员处理，只返回 JSON。
-
-四位专员：
-1. "concept_qa" → 交给"应答专员"：用户问概念、原理、方法、术语解释，或让你比较/分析算法本身，而不要求跑新的仿真。
-   例如"什么是卡尔曼滤波""加权平均和最近邻融合有什么区别""跟踪率是怎么算的"。这类直接回答，不要调用工具。
-2. "experiment" → 交给"执行专员"：用户要一次具体的操作——改一个配置、跑一次仿真、读一次结果。
-   例如"把目标数改成5""跑一次看看""读一下上次的指标"。
-3. "explore" → 交给"规划专员"：用户给的是一个探索性目标，需要跑多个实验才能回答（对比不同算法或参数、找增益、
-   做敏感性分析），而不是一次改配置跑一次。
-   例如"对比卡尔曼滤波和加权平均在5目标场景的精度""看看资源数从2加到4对等待时间的影响"
-   "帮我找出这个场景下最好的融合方法"。这类会先规划一个多步实验序列，让用户一次确认后连续执行。
-4. "clarify" → 交给"澄清专员"：用户想做实验，但关键信息缺失、且澄清会显著改变执行，需要先反问。
-   注意：会话已有工作配置时，普通一句"跑一下"用当前配置即可，不必澄清；只有当意图本身有歧义
-   （比如"帮我优化一下"没说优化哪个指标、"对比一下"没说对比什么策略）时才澄清。
-
-返回 JSON：
-{"action": "concept_qa|experiment|explore|clarify", "because": "一句话说明为什么这么分派（中文，20 字以内）", "question": "仅 clarify 时填写，一句简短的反问"}
-
-只返回 JSON，不要任何其他内容。"""
-
-
-CONCEPT_SYSTEM_PROMPT = """你是 FusionPilot（一体化雷达与电子对抗仿真平台）的仿真助手。用户问的是概念、原理或方法，不需要你运行仿真。
-
-你会拿到一段【知识库】摘录——它是本平台的权威参考材料，由平台代码与领域约定整理而来。回答规则：
-- 只依据【知识库】回答。摘录里没有的内容，就说现有资料里没有这一部分，不要用一般性常识补齐。
-- 特别注意本平台特有的边界，不要把平台描述得比资料更完备。例如：融合层能直接拿到目标真值状态，
-  因此除卡尔曼滤波外上报的速度不是估计量；一次运行的指标只是单个随机种子上的一个样本，不能据此
-  给方法排序；卡尔曼滤波的过程噪声是假设值而非标定值。
-- 不要编造任何仿真数值，也不要假装你刚跑过实验——你没有调用任何工具，就没有任何结果可引用。
-- 引用到具体小节时，可以在句末用「（见《小节标题》）」的形式标出来源。
-- 用用户的语言，简洁（2-4 句为主，除非用户明确要详细展开）。
-- 不要调用工具。"""
+# Generated from the skill registry, so a newly registered specialist shows up in the routing
+# instructions without anyone editing this prompt. The phrase "意图路由" inside it is a wire
+# contract, not decoration: the stub provider used by the end-to-end scripts and the tests
+# recognises a supervisor call by it, and SkillRegistry.routing_prompt keeps it for that reason.
+CLASSIFY_SYSTEM_PROMPT = SKILLS.routing_prompt()
 
 
 # Recorded on a grounded answer so the transcript shows what the answer was allowed to use. When the
@@ -160,30 +126,6 @@ KNOWLEDGE_ABSENT_NOTE = "平台资料中没有与这个问题对应的小节。"
 # mention therefore cannot be mistaken for material that was actually retrieved.
 KNOWLEDGE_BLOCK_HEADER = "## 知识库"
 REFERENCE_BLOCK_HEADER = "## 参考材料"
-
-
-PLANNER_SYSTEM_PROMPT = """你是 FusionPilot（雷达与电子对抗仿真平台）的实验规划器。用户给了一个探索性目标，你设计一个多步实验序列来回答它。
-
-可用工具，每一步必须用其中之一：
-- update_experiment_config：改配置，arguments 形如 {"patch": {"fusionMethod": "KALMAN_FILTER"}}。
-- run_simulation：用当前配置跑一次仿真并返回指标，arguments 形如 {"reason": "这一步要验证什么"}。
-- calculate_metrics：读取最近一次运行的指标。
-- validate_experiment：只校验不运行，通常不需要。
-
-规划要求：
-- 序列要能直接执行：每次 run_simulation 之前，必须已经有一次 update_experiment_config 把它要用的配置设好（沿用当前配置的第一次运行可以省略）。
-- 对比类目标：为每个待对比的配置各安排一次 update + 一次 run。
-- 步骤精简，通常 3-6 步；不要安排重复或多余的步骤。
-- 字段名和枚举值必须与平台一致（见下方参考材料）。例如融合方法是 KALMAN_FILTER 这种大写枚举名，
-  不是中文名；每个字段都有合法取值范围，安排一个超出范围的取值会让整步失败。
-- 规划时检查对比是否真的能产生差异：可用资源大于等于目标数时，两种调度策略结果相同，这样的对比
-  测不出任何东西。
-- 不要编造任何指标数值。你只规划步骤，数值由仿真核心给出。
-
-只返回 JSON：
-{"goal": "对目标的简短复述", "rationale": "一句话说明这个序列为什么能回答目标", "steps": [{"summary": "这一步做什么（中文）", "tool": "工具名", "arguments": {}}]}
-
-只返回 JSON，不要任何其他内容。"""
 
 
 async def plan_experiment(
@@ -613,24 +555,23 @@ def build_turn_graph(on_event: EventSink | None = None) -> StateGraph:
     builder = StateGraph(TurnState)
     # Node names are the specialists, not the routes: the graph should read as the team's
     # coordination, so a reader can see who does what without decoding the route vocabulary.
+    # The routed specialists and the supervisor's routing edges both come from the skill registry;
+    # only the handlers live here, because each closes over this turn's on_event sink. Adding a
+    # specialist is therefore: register a Skill, and give it a handler in this table — the node and
+    # its edge from the supervisor are generated, which is the whole point of a registry.
+    routed_handlers = {
+        "responder": _answer_concept,
+        "executor": _run_experiment,
+        "planner": _plan_experiment,
+        "clarifier": _ask_clarify,
+    }
     builder.add_node("supervisor", _supervisor)
-    builder.add_node("responder", _answer_concept)
-    builder.add_node("executor", _run_experiment)
-    builder.add_node("planner", _plan_experiment)
-    builder.add_node("clarifier", _ask_clarify)
+    for skill in SKILLS.all():
+        builder.add_node(skill.name, routed_handlers[skill.name])
     builder.add_node("analyst", _analysis)
     builder.add_node("critic", _reflect)
     builder.add_edge(START, "supervisor")
-    builder.add_conditional_edges(
-        "supervisor",
-        _route,
-        {
-            CONCEPT_QA: "responder",
-            EXPERIMENT: "executor",
-            EXPLORE: "planner",
-            CLARIFY: "clarifier",
-        },
-    )
+    builder.add_conditional_edges("supervisor", _route, SPECIALISTS)
     builder.add_edge("responder", END)
     # executor -> analyst (only when a result exists) -> critic. The critic audits the closing prose
     # against the facts; the analyst supplies the structured reading the prose can be compared with.
