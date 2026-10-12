@@ -7,12 +7,17 @@
 # the service fails at import with ModuleNotFoundError.
 
 # --- runtime
-fastapi==0.115.6
+fastapi==0.116.1
 uvicorn[standard]==0.34.0
 httpx==0.28.1
-pydantic==2.10.4
+pydantic==2.14.1
 python-dotenv==1.0.1
 langgraph==1.2.14
+# `mcp` carries this project's own tools over an in-process MCP server (app/mcp_runtime).
+# Pin it to 2.2.x and keep fastapi in step: mcp 2.3+ pulls starlette 1.x, which fastapi 0.116
+# cannot start against (Router.__init__() loses on_startup) — that upgrade breaks the service
+# at import, not in a test. Bumping mcp means bumping fastapi and re-running the whole suite.
+mcp==2.2.0
 
 # --- tests (the suite is part of the project: python -m pytest tests)
 pytest==8.3.4

@@ -8,7 +8,7 @@ Java owns the simulation and the domain truth, Python owns the agent orchestrati
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Java tests](https://img.shields.io/badge/Java%20tests-65%20passed-brightgreen.svg)](#tests)
-[![Agent tests](https://img.shields.io/badge/Agent%20tests-217%20passed-brightgreen.svg)](#tests)
+[![Agent tests](https://img.shields.io/badge/Agent%20tests-223%20passed-brightgreen.svg)](#tests)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#tests)
 
 ![Landing page](docs/images/landing.png)
@@ -129,7 +129,7 @@ Open **http://127.0.0.1:5173/** and register an account (login asks a small arit
 ## Tests
 
 ```bash
-cd agent-service && python -m pytest tests      # 217 agent tests
+cd agent-service && python -m pytest tests      # 223 agent tests
 cd agent-service && python -m evals.run_evals   # 17 eval cases, 0.4s, offline
 cd backend && ./mvnw test                       # 65 Java tests
 cd web && npx vue-tsc -b                        # frontend type check (must use -b)

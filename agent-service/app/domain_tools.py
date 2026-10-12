@@ -244,27 +244,19 @@ async def execute_tool(
     context: ToolContext,
     authorization: str | None,
 ) -> ToolOutcome:
-    if tool_name == "get_experiment_config":
-        return ToolOutcome(
-            ok=True,
-            summary={
-                "working_config": context.working_config,
-                "default_config": context.default_config,
-            },
-        )
-    if tool_name == "update_experiment_config":
-        return await _update_config(arguments, context)
-    if tool_name == "validate_experiment":
-        return await _validate(context)
-    if tool_name == "run_simulation":
-        return await _run(context, authorization)
-    if tool_name == "compare_scheduling_policies":
-        return await _compare(context, authorization)
-    if tool_name == "calculate_metrics":
-        return _metrics(context)
-    if tool_name == "search_knowledge":
-        return _search_knowledge(arguments)
-    return ToolOutcome(ok=False, error=f"Unknown tool: {tool_name}")
+    """
+    Run one tool call over the in-process MCP transport.
+
+    The dispatch that used to live here — a chain of string comparisons picking a function — moved
+    into ``mcp_runtime.server``, where the tools are registered. This function now only binds a
+    server to the turn's context and asks it to run the tool, which is what makes the tool surface
+    discoverable over the protocol rather than implied by the body of this function.
+    """
+    # Imported inside the call: the server module imports this one for the tool implementations, so
+    # a module-level import would be circular.
+    from .mcp_runtime import ToolClient, build_tool_server
+
+    return await ToolClient(build_tool_server(context, authorization)).call_tool(tool_name, arguments)
 
 
 def _search_knowledge(arguments: dict[str, Any]) -> ToolOutcome:

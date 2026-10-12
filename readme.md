@@ -10,7 +10,7 @@ Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Java tests](https://img.shields.io/badge/Java%20tests-65%20passed-brightgreen.svg)](#测试与评测)
-[![Agent tests](https://img.shields.io/badge/Agent%20tests-217%20passed-brightgreen.svg)](#测试与评测)
+[![Agent tests](https://img.shields.io/badge/Agent%20tests-223%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
 > **小白第一次 vibe 的产物，欢迎各位大佬提 PR，有用的话点个 star 吧，感激不尽！**
@@ -170,10 +170,11 @@ FusionPilot/
 │   │   ├── model_gateway.py 供应商无关的模型调用（OpenAI/Anthropic 双协议）
 │   │   ├── result_analysis.py 结构化解读与指标过滤
 │   │   ├── skills/         技能注册表：专员的路由/提示词/工具权限集中一处定义
+│   │   ├── mcp_runtime/    工具经 MCP 暴露（进程内 server/client；定义与执行解耦）
 │   │   └── ...             会话、工具、Java 客户端、记忆
 │   ├── knowledge/          领域知识库（7 文档 / 42 小节）
 │   ├── evals/              评测集（用例 + 执行器 + 评分器 + 报告）
-│   └── tests/              217 个测试 + 6 个 HTTP 端到端脚本
+│   └── tests/              223 个测试 + 6 个 HTTP 端到端脚本
 ├── web/                    Vue 3 + TypeScript + Vite：可视化
 ├── docs/
 │   ├── images/             README 用的界面截图
@@ -190,7 +191,7 @@ FusionPilot/
 ## 测试与评测
 
 ```bash
-# Agent 单元测试（217 个）
+# Agent 单元测试（223 个）
 cd agent-service && python -m pytest tests
 
 # 评测集（17 个用例，0.4 秒，离线，脚本模型）
