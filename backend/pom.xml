@@ -11,7 +11,7 @@
     </parent>
     <groupId>com.fusionpilot</groupId>
     <artifactId>fusionpilot-backend</artifactId>
-    <version>0.3.1</version>
+    <version>0.3.2</version>
     <name>fusionpilot-backend</name>
     <description>FusionPilot radar simulation domain backend</description>
     <properties>

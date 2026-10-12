@@ -1,7 +1,7 @@
 {
   "name": "fusionpilot-web",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "FusionPilot web console: simulation workbench and agent chat (Vue 3 + TypeScript + Vite)",
   "license": "MIT",
   "type": "module",

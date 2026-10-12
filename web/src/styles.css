@@ -37,7 +37,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #45d483; box-shadow: 0 0 12px #45d483; }
 .status-dot.offline { background: #f43f5e; box-shadow: 0 0 12px #f43f5e; }
 /* .topbar-status applies text-transform: uppercase to its labels; a version tag is lowercase by
-   convention ("v0.3.1", not "V0.3.1"), so this one opts back out. */
+   convention ("v0.3.2", not "V0.3.2"), so this one opts back out. */
 .topbar-version { text-transform: none; }
 .status-divider { width: 1px; height: 12px; background: var(--line); }
 .notice-center { position: relative; display: flex; align-items: center; }
