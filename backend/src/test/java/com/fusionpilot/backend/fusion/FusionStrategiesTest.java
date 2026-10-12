@@ -18,6 +18,9 @@ import static org.assertj.core.api.Assertions.within;
 
 class FusionStrategiesTest {
 
+    /** One fixed seed for the whole file: trajectories are drawn now, so a test has to name one. */
+    private static final long TEST_SEED = 20260928L;
+
     private static final double RADAR_NOISE = 3.0;
     private static final double EO_IR_NOISE = 5.0;
 
@@ -170,7 +173,7 @@ class FusionStrategiesTest {
 
         FusedTargetState estimate = null;
         for (int timeStep = 0; timeStep < 30; timeStep++) {
-            TargetState truth = ObservationService.stateAt(2, timeStep, 1.0);
+            TargetState truth = ObservationService.stateAt(2, timeStep, 1.0, TEST_SEED);
             Observation exact = new Observation(
                     2, ObservationSourceType.RADAR, timeStep, timeStep,
                     truth.x(), truth.y(), 1.0, true
@@ -178,9 +181,11 @@ class FusionStrategiesTest {
             estimate = kalman.fuse(runContext, truth, List.of(exact), 1.0).state();
         }
 
-        // Target 2 flies at exactly (3.0, 1.5) units per second.
-        assertThat(estimate.velocityX()).isCloseTo(3.0, within(1e-4));
-        assertThat(estimate.velocityY()).isCloseTo(1.5, within(1e-4));
+        // The filter must land on the truth's velocity, whatever the draw made it — the old
+        // hardcoded (3.0, 1.5) was a property of the formula, not of the filter.
+        TargetState flown = ObservationService.stateAt(2, 0, 1.0, TEST_SEED);
+        assertThat(estimate.velocityX()).isCloseTo(flown.velocityX(), within(1e-4));
+        assertThat(estimate.velocityY()).isCloseTo(flown.velocityY(), within(1e-4));
         assertThat(estimate.uncertainty()).isLessThan(1.0);
     }
 
@@ -197,7 +202,7 @@ class FusionStrategiesTest {
         FusedTargetState estimate = null;
         double rawErrorSum = 0.0;
         for (int timeStep = 0; timeStep < offsets.length; timeStep++) {
-            TargetState truth = ObservationService.stateAt(1, timeStep, 1.0);
+            TargetState truth = ObservationService.stateAt(1, timeStep, 1.0, TEST_SEED);
             double measuredX = truth.x() + offsets[timeStep];
             double measuredY = truth.y() + offsets[(timeStep + 7) % offsets.length];
             rawErrorSum += Math.hypot(measuredX - truth.x(), measuredY - truth.y());
@@ -209,13 +214,14 @@ class FusionStrategiesTest {
             estimate = kalman.fuse(runContext, truth, List.of(measurement), 1.0).state();
         }
 
-        TargetState truth = ObservationService.stateAt(1, offsets.length - 1, 1.0);
+        TargetState truth = ObservationService.stateAt(1, offsets.length - 1, 1.0, TEST_SEED);
         double estimateError = Math.hypot(estimate.x() - truth.x(), estimate.y() - truth.y());
         double meanRawError = rawErrorSum / offsets.length;
 
-        // Target 1 flies at exactly (2.5, 1.25) units per second.
-        assertThat(estimate.velocityX()).isCloseTo(2.5, within(0.75));
-        assertThat(estimate.velocityY()).isCloseTo(1.25, within(0.75));
+        // The filter must land near the truth's velocity, whatever the draw made it.
+        TargetState flown = ObservationService.stateAt(1, 0, 1.0, TEST_SEED);
+        assertThat(estimate.velocityX()).isCloseTo(flown.velocityX(), within(0.75));
+        assertThat(estimate.velocityY()).isCloseTo(flown.velocityY(), within(0.75));
         assertThat(estimate.predictedOnly()).isFalse();
         // Smoothing the measurements must beat the raw measurement error.
         assertThat(estimateError).isLessThan(meanRawError);

@@ -70,14 +70,17 @@ class ObservationServiceTest {
 
         ObservationSample sample = observationService.sample(delayedConfig, 5);
         Observation observation = sample.observations().get(0);
-        TargetState expected = ObservationService.stateAt(1, 3, config.timeStepSeconds());
+        TargetState expected = ObservationService.stateAt(1, 3, config.timeStepSeconds(), 7L);
 
         assertThat(observation.timeStep()).isEqualTo(5);
         assertThat(observation.observedTimeStep()).isEqualTo(3);
         assertThat(observation.x()).isEqualTo(expected.x());
         assertThat(observation.y()).isEqualTo(expected.y());
-        // The stale report really is behind the current truth, not the same point.
-        assertThat(observation.x()).isLessThan(ObservationService.stateAt(1, 5, config.timeStepSeconds()).x());
+        // The stale report really is a different point from the current truth. It is no longer
+        // asserted to be *behind* it on x: headings are drawn now, so a target may travel in -x.
+        TargetState current = ObservationService.stateAt(1, 5, config.timeStepSeconds(), 7L);
+        assertThat(Math.hypot(observation.x() - current.x(), observation.y() - current.y()))
+                .isGreaterThan(0.0);
     }
 
     @Test
@@ -97,7 +100,7 @@ class ObservationServiceTest {
 
         ObservationSample sample = observationService.sample(immediateConfig, 5);
         Observation observation = sample.observations().get(0);
-        TargetState expected = ObservationService.stateAt(1, 5, config.timeStepSeconds());
+        TargetState expected = ObservationService.stateAt(1, 5, config.timeStepSeconds(), 11L);
 
         assertThat(observation.observedTimeStep()).isEqualTo(5);
         assertThat(observation.x()).isEqualTo(expected.x());
