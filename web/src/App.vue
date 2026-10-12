@@ -919,6 +919,8 @@ async function submitAuth() {
       void loadAgentModelStatus()
       void loadSavedHistory()
       void loadConversations()
+      // A user with datasets already uploaded must see them in 真值来源 without uploading again.
+      void loadDatasets()
       // The token has to be in place first, otherwise the unread flags come back as guest values.
       void loadSystemNotices()
       authForm.value.password = ''
@@ -2212,6 +2214,9 @@ onMounted(async () => {
       localStorage.setItem('fusionpilot_user', JSON.stringify(authUser.value))
       void loadAgentModelStatus()
       void loadSavedHistory()
+      // Same reason as on login: restoring a session must also restore the dataset list, otherwise
+      // the workbench claims there is nothing usable while the account has datasets.
+      void loadDatasets()
       // Fetch again now that the token exists, so the read flags come from this account instead of
       // coming back empty the way they do for a guest.
       void loadSystemNotices()
