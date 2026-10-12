@@ -2120,7 +2120,13 @@ function renderChart() {
   }
 
   const steps = result.steps.slice(0, activeStep.value + 1)
-  const colors = ['#38bdf8', '#a78bfa', '#fbbf24']
+  // 两个通道各管一件事：**色相** = 哪个目标，**彩度** = 真值还是估计。
+  // 原来真值与融合同色、只差一个虚实；而这套仿真里融合轨迹几乎压在真实轨迹上（观测噪声只有几米），
+  // 两条线叠在一起就是一条 —— 用户反馈的正是"颜色一样，分不清"。
+  // 同色系里靠虚实/粗细区分，在两条线几乎重合时是无效的；换成彩度差别就一眼能分开，
+  // 而且色相仍然指着同一个目标。这也是跟踪评估类图表常见的画法。
+  const fusionColors = ['#38bdf8', '#fbbf24', '#a78bfa', '#34d399', '#fb7185', '#22d3ee', '#a3e635', '#e879f9']
+  const truthColors = ['#7b93ab', '#a89058', '#8a7fae', '#5f9c86', '#ad8391', '#5f95a0', '#8ba45c', '#a07ba8']
   // Derive the tracked targets from the data instead of the form state, so the
   // chart stays correct after a scenario or comparison result is swapped in.
   const targetIds = Array.from(new Set(
@@ -2140,7 +2146,9 @@ function renderChart() {
 
   const series = []
   for (const targetId of targetIds) {
-    const color = colors[(targetId - 1) % colors.length] ?? '#38bdf8'
+    const index = (targetId - 1) % fusionColors.length
+    const fusionColor = fusionColors[index] ?? '#38bdf8'
+    const truthColor = truthColors[index] ?? '#7b93ab'
     series.push(
       {
         name: `T${targetId} \u771f\u5b9e`,
@@ -2148,32 +2156,61 @@ function renderChart() {
         data: steps.map((step) => findPoint(step.trueStates, targetId)),
         symbol: 'none',
         connectNulls: false,
-        lineStyle: { width: 2, color },
-        itemStyle: { color }
+        // 真实：同色相的暗化版 + 粗实线 + 不透明。它是参照物，不该抢眼，但必须始终看得见。
+        // （暗化色本身已经和融合的亮色拉开了距离，不需要再靠透明度削弱，否则放大后会被融合的圆点盖住。）
+        z: 2,
+        lineStyle: { width: 3.4, color: truthColor, opacity: 1, cap: 'round' },
+        itemStyle: { color: truthColor },
+        emphasis: { focus: 'series' }
       },
       {
         name: `T${targetId} \u878d\u5408`,
         type: 'line',
+        // 融合：高饱和 + 细虚线 + 小圆点。即使与真实完全重合，也被这层亮线压在中间看得见。
+        // 圆点收小到 3：步数多的时候（300 步）圆点会连成一条珠链，太大就把真实那条粗线糊住了。
+        z: 3,
         data: steps.map((step) => findPoint(step.fusedStates, targetId)),
         symbol: 'circle',
-        symbolSize: 5,
+        symbolSize: 3,
         connectNulls: false,
-        lineStyle: { type: 'dashed', color },
-        itemStyle: { color }
+        lineStyle: { type: 'dashed', width: 1.6, color: fusionColor, opacity: 1 },
+        itemStyle: { color: fusionColor },
+        emphasis: { focus: 'series' }
       }
     )
   }
+
+  // 缩放/平移状态必须跨重绘保留。下面用的是 notMerge（目标数变化时不留旧序列），
+  // 而 notMerge 会把 dataZoom 一起重置 —— 不处理的话，播放到下一步缩放就没了，
+  // 而播放正是最想看局部偏差的时候。所以先把当前窗口读出来，再原样放回去。
+  const savedZoom = chart.getOption()?.dataZoom
 
   chart.setOption({
     backgroundColor: 'transparent',
     animation: steps.length < 200,
     tooltip: { trigger: 'axis' },
-    legend: { top: 4, textStyle: { color: '#9fb1c8' } },
+    // scroll 而不是默认的 plain：8 个目标时有 16 个条目，plain 会折行挤掉绘图区。
+    legend: { top: 4, type: 'scroll', textStyle: { color: '#9fb1c8' } },
     grid: { left: 52, right: 22, top: 46, bottom: 38 },
+    // 两个轴各挂一个 inside 缩放：滚轮同时缩放 X/Y，按住拖动平移。
+    // filterMode 用默认的 filter，放大后只看窗口内那一段，边缘是干净的。
+    dataZoom: (Array.isArray(savedZoom) && savedZoom.length === 2) ? savedZoom : [
+      { type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false },
+      { type: 'inside', yAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false }
+    ],
     xAxis: { type: 'value', name: 'X', scale: true, axisLabel: { color: '#71839b' }, splitLine: { lineStyle: { color: '#203047' } } },
     yAxis: { type: 'value', name: 'Y', scale: true, axisLabel: { color: '#71839b' }, splitLine: { lineStyle: { color: '#203047' } } },
     series
   }, { notMerge: true })
+}
+
+/** 把视图拉回"看全场景"。两个轴各发一次，因为缩放是按 dataZoom 组件记的。 */
+function resetChartView() {
+  if (!chart) return
+  for (const dataZoomIndex of [0, 1]) {
+    chart.dispatchAction({ type: 'dataZoom', dataZoomIndex, start: 0, end: 100 })
+  }
+  renderChart()
 }
 
 function resizeChart() {
@@ -2592,7 +2629,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="panel chart-panel">
-            <div class="panel-heading"><div><span class="panel-kicker">02 / &#36712;&#36857;</span><h2>&#30495;&#23454;&#29366;&#24577;&#19982;&#34701;&#21512;&#29366;&#24577;</h2></div><div class="legend-note"><span class="line-sample"></span>&#34394;&#32447;&#65309;&#34701;&#21512;&#20272;&#35745;</div></div>
+            <div class="panel-heading"><div><span class="panel-kicker">02 / &#36712;&#36857;</span><h2>&#30495;&#23454;&#29366;&#24577;&#19982;&#34701;&#21512;&#29366;&#24577;</h2></div><div class="legend-note"><span class="line-sample solid"></span>&#23454;&#32447;&#183;&#26263;&#33394;&#65309;&#30495;&#23454;&#36712;&#36857;<span class="line-sample"></span>&#34394;&#32447;&#65291;&#22278;&#28857;&#183;&#20142;&#33394;&#65309;&#34701;&#21512;&#20272;&#35745;<span class="chart-hint">&#28378;&#36718;&#32553;&#25918; &#183; &#25302;&#25341;&#24179;&#31227;</span><button v-if="simulation" class="ghost-button compact-button" type="button" @click="resetChartView">&#37325;&#32622;&#35270;&#22270;</button></div></div>
             <div v-if="!simulation" class="empty-state"><div class="empty-orbit"></div><strong>{{ sceneLoaded ? '\u573a\u666f\u5df2\u5c31\u7eea' : '\u7b49\u5f85\u52a0\u8f7d\u573a\u666f' }}</strong><span>{{ sceneLoaded ? '\u70b9\u51fb\u8fd0\u884c\u4eff\u771f\u751f\u6210\u8f68\u8ff9\u548c\u6307\u6807\u3002' : '\u5148\u70b9\u51fb\u5de6\u4fa7\u7684\u52a0\u8f7d\u9ed8\u8ba4\u573a\u666f\u3002' }}</span></div>
             <div v-else ref="chartElement" class="chart"></div>
           </div>

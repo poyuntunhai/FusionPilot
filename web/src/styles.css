@@ -292,8 +292,14 @@ h2 { margin: 5px 0 0; font-size: 16px; font-weight: 680; letter-spacing: .01em; 
 .metric-card strong { display: block; margin-top: 14px; font-size: 27px; font-weight: 650; letter-spacing: -.03em; }
 .metric-card small { display: block; margin-top: 7px; color: var(--muted); font-size: 10px; }
 .chart-panel { min-height: 470px; padding: 22px 22px 14px; }
-.legend-note { color: var(--muted); font-size: 10px; }
+.legend-note { color: var(--muted); font-size: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* 缩放/平移是隐式交互，不写出来没人会去滚 —— 提示成本一行，发现成本是一次困惑。 */
+.chart-hint { margin-left: 10px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); white-space: nowrap; }
+.legend-note .compact-button { margin-left: 2px; }
 .line-sample { display: inline-block; width: 18px; border-top: 1px dashed var(--cyan); vertical-align: middle; margin-right: 6px; }
+/* 真实轨迹的样例：粗、暗色、实线 —— 与图表里的画法一致，否则图例说明和实物对不上。 */
+.line-sample.solid { border-top: 3px solid #7b93ab; }
+.legend-note .line-sample + .line-sample { margin-left: 14px; }
 .chart { height: 390px; width: 100%; }
 .empty-state { min-height: 390px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); text-align: center; }
 .empty-state strong { color: var(--muted-strong); font-size: 14px; }
