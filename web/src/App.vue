@@ -20,6 +20,11 @@ type ExperimentConfig = {
   schedulingPolicy: 'ROUND_ROBIN' | 'PRIORITY'
   randomSeed: number
   observationSources: ObservationSource[]
+  /**
+   * 空 = 用内置合成轨迹；非空 = 用该数据集的 truth.csv 当作仿真真值。
+   * 提交前会转成 null（见 runPayload）—— 后端把「没填」当缺省，空字符串不是缺省。
+   */
+  datasetId?: string | null
 }
 
 type TargetState = {
@@ -293,6 +298,19 @@ type DatasetImportSummary = {
   warnings: string[]
   createdAt: string
 }
+type DatasetSummary = {
+  datasetId: string
+  fileName: string
+  fileSize: number
+  status: string
+  truthRows: number
+  observationRows: number
+  errors: string[]
+  warnings: string[]
+  /** 校验通过且带 truth.csv —— 只有这样的数据集能当真值。 */
+  usableAsTruth: boolean
+  createdAt: string
+}
 type LoginResponse = {
   accessToken: string
   expiresAt: string
@@ -381,8 +399,18 @@ const config = ref<ExperimentConfig>({
   fusionMethod: 'WEIGHTED_AVERAGE',
   schedulingPolicy: 'ROUND_ROBIN',
   randomSeed: 20260928,
-  observationSources: cloneDefaultObservationSources()
+  observationSources: cloneDefaultObservationSources(),
+  datasetId: ''
 })
+
+/** 提交给后端的配置：空白的数据集选择要变成「没有数据集」，而不是空字符串。 */
+const runPayload = computed(() => ({
+  ...config.value,
+  datasetId: config.value.datasetId && config.value.datasetId.trim() ? config.value.datasetId : null
+}))
+
+/** 只有校验通过、且带 truth.csv 的数据集能出现在选择器里。 */
+const usableDatasets = computed(() => datasetList.value.filter((item) => item.usableAsTruth))
 
 const simulation = ref<SimulationResult | null>(null)
 const comparison = ref<ComparisonResult | null>(null)
@@ -427,6 +455,7 @@ const datasetFile = ref<File | null>(null)
 const datasetBusy = ref(false)
 const datasetMessage = ref('')
 const datasetSummary = ref<DatasetImportSummary | null>(null)
+const datasetList = ref<DatasetSummary[]>([])
 let chart: echarts.ECharts | null = null
 let playbackTimer: number | undefined
 let chartRenderFrame: number | undefined
@@ -826,10 +855,25 @@ async function importDataset() {
     datasetMessage.value = datasetSummary.value.status === 'VALIDATED'
       ? '数据集已通过校验，可作为后续场景加载来源。'
       : '数据集已保存，但校验未通过，请根据错误信息修正。'
+    // 刚传上去的那个应当立刻出现在真值来源里，不用刷新页面。
+    void loadDatasets()
   } catch (error) {
     datasetMessage.value = error instanceof Error ? error.message : String(error)
   } finally {
     datasetBusy.value = false
+  }
+}
+
+async function loadDatasets() {
+  if (!authToken.value) {
+    datasetList.value = []
+    return
+  }
+  try {
+    datasetList.value = await request<DatasetSummary[]>('/api/v1/datasets')
+  } catch {
+    // 列表拉不到不该拖住实验台：选择器退回「只用合成场景」，仿真照跑。
+    datasetList.value = []
   }
 }
 
@@ -1401,6 +1445,7 @@ async function loadDefaultConfig(): Promise<boolean> {
   errorMessage.value = ''
   try {
     config.value = await request<ExperimentConfig>('/api/v1/experiments/default')
+  void loadDatasets()
     // No silent clamping: the panel must show exactly the configuration that will be submitted.
     sceneLoaded.value = true
     simulation.value = null
@@ -1447,7 +1492,7 @@ async function runSimulation() {
   try {
     job = await request<SimulationJobStatus>('/api/v1/simulations/jobs', {
       method: 'POST',
-      body: JSON.stringify(config.value)
+      body: JSON.stringify(runPayload.value)
     }, controller)
 
     const updateStatus = (status: SimulationJobStatus) => {
@@ -1530,7 +1575,7 @@ async function comparePolicies() {
   try {
     result = await request<ComparisonResult>('/api/v1/simulations/compare', {
       method: 'POST',
-      body: JSON.stringify(config.value)
+      body: JSON.stringify(runPayload.value)
     }, controller)
   } catch (error) {
     if (activeRunToken.value === token && !(error instanceof DOMException && error.name === 'AbortError')) {
@@ -2412,6 +2457,19 @@ onBeforeUnmount(() => {
               <span v-for="warning in datasetSummary.warnings" :key="warning">{{ warning }}</span>
               <span v-for="error in datasetSummary.errors" :key="error" class="dataset-error">{{ error }}</span>
             </div>
+
+            <label class="field">
+              <span>仿真真值来源</span>
+              <select v-model="config.datasetId">
+                <option value="">合成场景（内置轨迹）</option>
+                <option v-for="item in usableDatasets" :key="item.datasetId" :value="item.datasetId">
+                  {{ item.fileName }}（真值 {{ item.truthRows }} 行）
+                </option>
+              </select>
+            </label>
+            <small v-if="config.datasetId">将用该数据集的目标轨迹作为真值；观测仍按下方的观测源生成。</small>
+            <small v-else-if="usableDatasets.length">也可以选一个数据集，用它上传的真实目标轨迹替代内置轨迹。</small>
+            <small v-else>还没有可用于真值的数据集——上传带 truth.csv 的 ZIP，校验通过后这里就能选。</small>
           </div>
 
           <label class="field"><span>场景名称</span><input v-model="config.scenarioName" maxlength="80" /></label>

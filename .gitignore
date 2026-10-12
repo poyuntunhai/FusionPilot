@@ -34,6 +34,8 @@ data/
 *.sqlite3
 *.log
 runtime*.log
+# Uploaded datasets land here at runtime (runtime/datasets/<userId>/<datasetId>). Local data, not source.
+/runtime/
 
 # deploy/deploy.sh target host. Holds a real server address and key path, so it stays local.
 deploy/.deploy.env
