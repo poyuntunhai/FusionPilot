@@ -18,7 +18,7 @@ server:
   port: ${BACKEND_PORT:8080}
 
 fusionpilot:
-  version: 0.2.0
+  version: 0.3.0
   auth:
     # Dev convenience: with no mail service, the reset flow is only usable when the token is
     # returned in the response. Set FUSIONPILOT_RETURN_RESET_TOKEN=false to turn it off here.
