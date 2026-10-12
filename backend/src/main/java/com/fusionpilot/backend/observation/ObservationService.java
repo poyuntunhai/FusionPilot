@@ -1,7 +1,9 @@
 package com.fusionpilot.backend.observation;
 
+import com.fusionpilot.backend.dataset.DatasetTruthSource;
 import com.fusionpilot.backend.scenario.ExperimentConfig;
 import com.fusionpilot.backend.scenario.ObservationSourceConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,9 +26,20 @@ public class ObservationService {
     private static final double MAX_SPEED = 6.0;
 
     private final ObservationSource observationSource;
+    private final DatasetTruthSource datasetTruthSource;
 
-    public ObservationService(ObservationSource observationSource) {
+    @Autowired
+    public ObservationService(ObservationSource observationSource, DatasetTruthSource datasetTruthSource) {
         this.observationSource = observationSource;
+        this.datasetTruthSource = datasetTruthSource;
+    }
+
+    /**
+     * Synthesis-only wiring. Kept public so a test that never names a dataset does not have to
+     * build a repository and a database to exercise the observation model.
+     */
+    public ObservationService(ObservationSource observationSource) {
+        this(observationSource, null);
     }
 
     public ObservationSample sample(ExperimentConfig config, int timeStep) {
@@ -34,25 +47,30 @@ public class ObservationService {
             throw new IllegalArgumentException("timeStep must be within simulation range");
         }
 
+        // Refuse an unusable dataset before generating anything. The parse is cached, so this costs
+        // two integer comparisons — and a mismatched configuration then fails with a sentence up
+        // front instead of a stack trace halfway through a scene.
+        if (config.datasetId() != null) {
+            datasetTruthSource.load(config.datasetId())
+                    .validateFor(config.targetCount(), config.simulationSteps());
+        }
+
         // One deterministic stream per time step keeps runs reproducible.
         Random random = new Random(config.randomSeed() + timeStep);
         long seed = config.randomSeed();
         double timeStepSeconds = config.timeStepSeconds();
-        List<TargetState> targetStates = targetStates(config.targetCount(), timeStep, timeStepSeconds, seed);
+        List<TargetState> targetStates = truthAt(config, timeStep, timeStepSeconds, seed);
         List<Observation> observations = new ArrayList<>();
 
-        for (TargetState target : targetStates) {
+        for (int targetIndex = 0; targetIndex < targetStates.size(); targetIndex++) {
+            TargetState target = targetStates.get(targetIndex);
             for (ObservationSourceConfig sourceConfig : config.observationSources()) {
                 // A source with delaySteps > 0 reports where the target *was*, not where it is.
                 // Only the reported position changes here; the random draws happen in the same
                 // order as before, so a scenario with delaySteps = 0 stays numerically identical.
                 int observedTimeStep = Math.max(0, timeStep - sourceConfig.delaySteps());
-                TargetState reportedState = stateAt(
-                        target.targetId(),
-                        observedTimeStep,
-                        timeStepSeconds,
-                        seed
-                );
+                TargetState reportedState = truthAt(config, observedTimeStep, timeStepSeconds, seed)
+                        .get(targetIndex);
                 ObservationSourceResult result = observationSource.observe(
                         reportedState,
                         observedTimeStep,
@@ -115,6 +133,30 @@ public class ObservationService {
                 velocityY,
                 timeStep
         );
+    }
+
+    /**
+     * The scene's truth at one step.
+     *
+     * <p>Two sources, one shape: the dataset's recorded trajectories when the configuration names
+     * one, the synthesiser otherwise. Observations, fusion and scheduling all stay as they were —
+     * which is the point of putting the switch here rather than scattering it through the loop.
+     *
+     * <p>Observations are still generated from the configuration's sources even on the dataset
+     * path, so delay, noise and dropout keep meaning what they say and one uploaded scene can be
+     * replayed under several sensor setups.
+     */
+    private List<TargetState> truthAt(
+            ExperimentConfig config,
+            int timeStep,
+            double timeStepSeconds,
+            long seed
+    ) {
+        String datasetId = config.datasetId();
+        if (datasetId == null) {
+            return targetStates(config.targetCount(), timeStep, timeStepSeconds, seed);
+        }
+        return datasetTruthSource.load(datasetId).statesAt(timeStep, timeStepSeconds);
     }
 
     private List<TargetState> targetStates(

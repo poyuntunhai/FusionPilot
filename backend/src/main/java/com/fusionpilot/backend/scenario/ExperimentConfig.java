@@ -22,8 +22,47 @@ public record ExperimentConfig(
         @NotNull FusionMethod fusionMethod,
         @NotNull SchedulingPolicy schedulingPolicy,
         long randomSeed,
-        @NotEmpty @Size(max = 3) List<@Valid ObservationSourceConfig> observationSources
+        @NotEmpty @Size(max = 3) List<@Valid ObservationSourceConfig> observationSources,
+        /**
+         * Optional. When set, target truth comes from that dataset instead of the synthesised
+         * scene — the uploaded trajectories <em>are</em> the ground truth.
+         *
+         * <p>Null means "synthesise", which is what every caller predating datasets means, so the
+         * field is last and the nine-argument constructor below still exists: adding a required
+         * component would have broken every construction site in the project and its tests.
+         *
+         * <p>Ownership is not checked here — a config is just data. The API layer verifies that the
+         * dataset belongs to the caller before a run is accepted, and the observation layer trusts
+         * the id it is given.
+         */
+        @Size(max = 64) String datasetId
 ) {
+    /** The synthesised scene: no dataset. Kept so existing callers compile unchanged. */
+    public ExperimentConfig(
+            String scenarioName,
+            int targetCount,
+            int simulationSteps,
+            double timeStepSeconds,
+            int availableResources,
+            FusionMethod fusionMethod,
+            SchedulingPolicy schedulingPolicy,
+            long randomSeed,
+            List<ObservationSourceConfig> observationSources
+    ) {
+        this(
+                scenarioName,
+                targetCount,
+                simulationSteps,
+                timeStepSeconds,
+                availableResources,
+                fusionMethod,
+                schedulingPolicy,
+                randomSeed,
+                observationSources,
+                null
+        );
+    }
+
     /**
      * Ceiling on {@code targetCount × simulationSteps} for a single run.
      *

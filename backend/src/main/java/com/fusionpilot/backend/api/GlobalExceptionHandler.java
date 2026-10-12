@@ -8,6 +8,7 @@ import com.fusionpilot.backend.account.UnauthorizedException;
 import com.fusionpilot.backend.account.ForbiddenException;
 import com.fusionpilot.backend.simulation.SimulationCancelledException;
 import com.fusionpilot.backend.dataset.DatasetImportException;
+import com.fusionpilot.backend.dataset.DatasetNotUsableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -41,6 +42,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDatasetImport(DatasetImportException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("DATASET_IMPORT_ERROR", exception.getMessage(), List.of()));
+    }
+
+    /**
+     * The configuration named a dataset that cannot serve as truth: absent, unvalidated, without
+     * truth.csv, shorter than the run, or with a different target count. Each is the caller's to
+     * fix, so each arrives with a sentence saying which one it is rather than a stack trace.
+     */
+    @ExceptionHandler(DatasetNotUsableException.class)
+    public ResponseEntity<ErrorResponse> handleDatasetNotUsable(DatasetNotUsableException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("DATASET_NOT_USABLE", exception.getMessage(), List.of()));
     }
 
     @ExceptionHandler(SimulationCancelledException.class)

@@ -7,7 +7,7 @@
 Java owns the simulation and the domain truth, Python owns the agent orchestration, Vue owns the visualisation. The boundaries are strict: every claim the agent makes has to trace back to structured results the Java core returned.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Java tests](https://img.shields.io/badge/Java%20tests-65%20passed-brightgreen.svg)](#tests)
+[![Java tests](https://img.shields.io/badge/Java%20tests-77%20passed-brightgreen.svg)](#tests)
 [![Agent tests](https://img.shields.io/badge/Agent%20tests-223%20passed-brightgreen.svg)](#tests)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#tests)
 
@@ -131,7 +131,7 @@ Open **http://127.0.0.1:5173/** and register an account (login asks a small arit
 ```bash
 cd agent-service && python -m pytest tests      # 223 agent tests
 cd agent-service && python -m evals.run_evals   # 17 eval cases, 0.4s, offline
-cd backend && ./mvnw test                       # 65 Java tests
+cd backend && ./mvnw test                       # 77 Java tests
 cd web && npx vue-tsc -b                        # frontend type check (must use -b)
 ```
 

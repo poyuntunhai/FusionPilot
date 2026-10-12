@@ -9,7 +9,7 @@
 Java 负责仿真与领域真相，Python 负责 Agent 编排，Vue 负责可视化。三者边界严格，Agent 的每一句结论都必须能追溯到 Java 返回的结构化结果。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Java tests](https://img.shields.io/badge/Java%20tests-65%20passed-brightgreen.svg)](#测试与评测)
+[![Java tests](https://img.shields.io/badge/Java%20tests-77%20passed-brightgreen.svg)](#测试与评测)
 [![Agent tests](https://img.shields.io/badge/Agent%20tests-223%20passed-brightgreen.svg)](#测试与评测)
 [![Eval suite](https://img.shields.io/badge/eval%20suite-17%2F17-brightgreen.svg)](#测试与评测)
 
@@ -201,7 +201,7 @@ cd agent-service && python -m evals.run_evals
 cd agent-service && python -m evals.run_evals --group routing \
   --provider zhipu --model glm-4-flash --api-key <你的 token>
 
-# Java 测试（65 个）
+# Java 测试（77 个）
 cd backend && ./mvnw test
 
 # 前端类型检查（注意必须是 -b）
