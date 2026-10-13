@@ -48,6 +48,12 @@ deploy/.deploy.env
 memory-bank/
 PRD.md
 
+# Personal documents. These carry a real phone number and are untracked-but-sweepable:
+# one `git add -A` would publish them. Kept local on purpose.
+*简历*
+*resume*
+*.doc
+
 # Local agent tooling state (helper memory, local skills, caches)
 .workbuddy/
 .agents/
